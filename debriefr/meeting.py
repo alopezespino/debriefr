@@ -29,6 +29,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -51,12 +52,24 @@ from .pipeline import (
 DEFAULT_SUMMARY_MODEL = "claude-opus-4-6"
 
 
-def _keychain_get(service: str) -> str | None:
-    """Try macOS Keychain; return None silently on any failure."""
+def _secret_store_get(service: str) -> str | None:
+    """Try OS secret store: macOS Keychain, then Linux secret-tool."""
+    user = os.environ.get("USER", "")
+    # macOS Keychain
     try:
         r = subprocess.run(
-            ["security", "find-generic-password", "-a", os.environ.get("USER", ""),
+            ["security", "find-generic-password", "-a", user,
              "-s", service, "-w"],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except FileNotFoundError:
+        pass
+    # Linux secret-tool (libsecret)
+    try:
+        r = subprocess.run(
+            ["secret-tool", "lookup", "service", service, "account", user],
             capture_output=True, text=True,
         )
         if r.returncode == 0 and r.stdout.strip():
@@ -471,12 +484,25 @@ def run_meeting(
 
         if not skip_summary:
             print("[4/4] summarizing ...")
-            api_key = anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY") or _keychain_get("anthropic_api_key")
+            api_key = anthropic_api_key or _secret_store_get("anthropic_api_key")
+            if not api_key:
+                env_key = os.environ.get("ANTHROPIC_API_KEY")
+                if env_key:
+                    api_key = env_key
+                    print("      [warn] using ANTHROPIC_API_KEY from environment variable. "
+                          "Consider storing it in your OS secret store instead:",
+                          file=sys.stderr)
+                    print("        macOS:  security add-generic-password -a $USER "
+                          "-s anthropic_api_key -w", file=sys.stderr)
+                    print("        Linux:  secret-tool store --label='Anthropic API key' "
+                          "service anthropic_api_key account $USER", file=sys.stderr)
             if not api_key:
                 raise RuntimeError(
-                    "No Anthropic API key found. Pass anthropic_api_key=..., "
-                    "export ANTHROPIC_API_KEY=..., or store in macOS Keychain "
-                    "(security add-generic-password -a $USER -s anthropic_api_key -w)"
+                    "No Anthropic API key found. Store it in your OS secret store:\n"
+                    "  macOS:  security add-generic-password -a $USER -s anthropic_api_key -w\n"
+                    "  Linux:  secret-tool store --label='Anthropic API key' "
+                    "service anthropic_api_key account $USER\n"
+                    "Or pass anthropic_api_key=... directly."
                 )
             prompt_path = Path(summary_prompt_path) if summary_prompt_path else default_summary_prompt_path()
             summary_prompt = prompt_path.read_text()
