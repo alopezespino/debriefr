@@ -484,7 +484,7 @@ def run_meeting(
 
         if not skip_summary:
             print("[4/4] summarizing ...")
-            api_key = anthropic_api_key or _secret_store_get("anthropic_api_key")
+            api_key = _secret_store_get("anthropic_api_key")
             if not api_key:
                 env_key = os.environ.get("ANTHROPIC_API_KEY")
                 if env_key:
@@ -496,6 +496,8 @@ def run_meeting(
                           "-s anthropic_api_key -w", file=sys.stderr)
                     print("        Linux:  secret-tool store --label='Anthropic API key' "
                           "service anthropic_api_key account $USER", file=sys.stderr)
+            if not api_key and anthropic_api_key:
+                api_key = anthropic_api_key
             if not api_key:
                 raise RuntimeError(
                     "No Anthropic API key found. Store it in your OS secret store:\n"
