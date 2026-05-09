@@ -95,7 +95,7 @@ def diarize(
         device = _pick_device()
     print(f"[2/3] diarization ... (device: {device})")
     diar = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-3.1", use_auth_token=hf_auth,
+        "pyannote/speaker-diarization-3.1", token=hf_auth,
     )
     diar.to(device)
     diar_kwargs = {"num_speakers": num_speakers} if num_speakers else {}
@@ -111,7 +111,7 @@ def init_embedder(device: torch.device | None = None, hf_token: str | None = Non
     if device is None:
         device = _pick_device()
     embed_model = Model.from_pretrained(
-        "pyannote/wespeaker-voxceleb-resnet34-LM", use_auth_token=hf_auth,
+        "pyannote/wespeaker-voxceleb-resnet34-LM", token=hf_auth,
     )
     return Inference(embed_model, window="whole", device=device)
 
