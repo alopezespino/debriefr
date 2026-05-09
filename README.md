@@ -139,17 +139,16 @@ mkdir -p .claude/commands
 cp debriefr/templates/debrief.md .claude/commands/debrief.md
 ```
 
-This gives you `/debrief path/to/transcript.txt` in Claude Code -- it reads the transcript, auto-discovers participant bios from `projects.yaml`, and generates the summary using Claude's own context window.
-
 ### 5. Use it
 
-Drop an audio file in your workspace and tell Claude Code to process it. Or run directly:
+Drop an audio file in your workspace and run `/debrief path/to/recording.m4a` in Claude Code. The skill handles the full pipeline: identifies the project, runs transcription and diarization, walks you through speaker enrollment if needed, summarizes, and optionally syncs action items to GitHub.
+
+You can also run the pipeline directly from the terminal:
 
 ```bash
+source /path/to/debriefr/.venv/bin/activate
 debriefr transcribe recording.m4a --project ProjectAlpha
 ```
-
-That's it. The `--project` flag resolves output directory, participants, bios, and cleanup mode from the registry.
 
 ## Speaker enrollment
 
