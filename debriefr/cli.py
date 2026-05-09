@@ -153,9 +153,14 @@ def cmd_transcribe(args):
     registry_bios = {}
 
     if args.project:
-        audio_dir = Path(args.audio).parent.resolve() if args.audio else None
+        if args.audio:
+            discover_from = Path(args.audio).parent.resolve()
+        elif args.resume:
+            discover_from = Path(args.resume).parent.resolve()
+        else:
+            discover_from = None
         project_config, people = _resolve_registry(
-            args.project, args.projects_yaml, audio_dir
+            args.project, args.projects_yaml, discover_from
         )
         registry_bios = extract_bios(people)
 

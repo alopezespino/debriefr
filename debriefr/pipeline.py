@@ -99,7 +99,12 @@ def diarize(
     )
     diar.to(device)
     diar_kwargs = {"num_speakers": num_speakers} if num_speakers else {}
-    diarization = diar(str(audio), **diar_kwargs)
+    result = diar(str(audio), **diar_kwargs)
+    # pyannote 4.x wraps output in DiarizeOutput; extract the Annotation
+    if hasattr(result, "speaker_diarization"):
+        diarization = result.speaker_diarization
+    else:
+        diarization = result
     speakers = {s for _, _, s in diarization.itertracks(yield_label=True)}
     print(f"      {len(speakers)} speaker cluster(s)")
     return diarization, device

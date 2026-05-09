@@ -51,6 +51,21 @@ from .pipeline import (
 DEFAULT_SUMMARY_MODEL = "claude-opus-4-6"
 
 
+def _keychain_get(service: str) -> str | None:
+    """Try macOS Keychain; return None silently on any failure."""
+    try:
+        r = subprocess.run(
+            ["security", "find-generic-password", "-a", os.environ.get("USER", ""),
+             "-s", service, "-w"],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except FileNotFoundError:
+        pass
+    return None
+
+
 def slugify(text: str) -> str:
     s = re.sub(r"[^a-zA-Z0-9_-]+", "_", text.strip().lower())
     return re.sub(r"_+", "_", s).strip("_") or "meeting"
@@ -456,11 +471,12 @@ def run_meeting(
 
         if not skip_summary:
             print("[4/4] summarizing ...")
-            api_key = anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
+            api_key = anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY") or _keychain_get("anthropic_api_key")
             if not api_key:
                 raise RuntimeError(
-                    "No Anthropic API key found. Pass anthropic_api_key=... "
-                    "or export ANTHROPIC_API_KEY=..."
+                    "No Anthropic API key found. Pass anthropic_api_key=..., "
+                    "export ANTHROPIC_API_KEY=..., or store in macOS Keychain "
+                    "(security add-generic-password -a $USER -s anthropic_api_key -w)"
                 )
             prompt_path = Path(summary_prompt_path) if summary_prompt_path else default_summary_prompt_path()
             summary_prompt = prompt_path.read_text()
