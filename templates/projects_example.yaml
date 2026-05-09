@@ -1,0 +1,50 @@
+# projects.yaml — project registry for debriefr
+#
+# Centralizes participant metadata and per-project config so a single
+# `--project <slug>` resolves output directory, participants, bios,
+# GitHub handles, and cleanup mode automatically.
+#
+# Copy this file to your workspace (e.g., `projects/projects.yaml`)
+# and adapt. debriefr discovers it by searching upward from the audio
+# file's location for `projects.yaml` or `projects/projects.yaml`.
+
+# ── Shared participant metadata ────────────────────────────────────────
+# Define each person once. All projects reference them by name.
+
+participants:
+  YourName:
+    bio: Your role and expertise.
+    github: your-handle
+    email: you@example.com
+  Collaborator:
+    bio: Their role and background.
+    github: their-handle
+    email: them@example.com
+
+# Guests appear in meetings but aren't regular collaborators.
+# Same schema as participants; kept separate to avoid clutter.
+guests:
+  GuestSpeaker:
+    bio: One-line background for the summarizer.
+    github: null
+
+# ── Projects ───────────────────────────────────────────────────────────
+# Each top-level key (other than participants/guests) is a project slug.
+
+ProjectAlpha:
+  path: /path/to/project-alpha          # canonical project folder on disk
+  transcript_dir: meetings              # subdir under `path` for transcripts
+  default_participants:                 # must match enrolled speaker names
+    - YourName
+    - Collaborator
+  cleanup: archive-all                  # gitignore | archive-all | archive-audio
+  github:                               # omit entirely for non-git projects
+    repo: owner/project-alpha           # for `sync-issues --repo`
+    project: 42                         # Project v2 number (from `sync-issues --setup`)
+
+ProjectBeta:
+  path: /path/to/project-beta
+  transcript_dir: notes/meetings
+  default_participants:
+    - YourName
+  # no github: section — pipeline ends at summary, sync-issues is unavailable

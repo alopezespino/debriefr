@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Audio / biometric data — never commit
+*.wav
+*.flac
+*.m4a
+*.mp3
+*.aac
+*.ogg
+*.opus
+*.npy
+
+# Meeting outputs (may contain private content)
+*.json
+*.txt
+!examples/**/*.txt
+!examples/**/*.json
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+
+# User-local config
+.env
+
+# Backups
+*.bak
