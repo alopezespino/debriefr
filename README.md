@@ -26,18 +26,25 @@ You can also run every step manually from the command line -- debriefr is a stan
 ```bash
 git clone https://github.com/alopezespino/debriefr.git
 cd debriefr
-pip install -e .
 ```
 
-For local Whisper (no cloud API needed), add an extra:
+debriefr's dependencies (PyTorch, pyannote, etc.) are heavy and version-pinned. Install them in a **virtual environment** so they don't interfere with your system Python. The venv is a persistent directory (`.venv/`) created once and reused every time you run debriefr:
 
 ```bash
-pip install -e .[mlx]    # Apple Silicon (recommended for 16 GB+ Macs)
-pip install -e .[local]  # cross-platform (faster-whisper, CPU or CUDA)
-pip install -e .[all]    # both
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .          # cloud backends only (Groq, OpenAI)
+# OR pick one that includes local Whisper:
+pip install -e .[mlx]    # + Apple Silicon local backend (recommended for 16 GB+ Macs)
+pip install -e .[local]  # + cross-platform local backend (faster-whisper, CPU or CUDA)
+pip install -e .[all]    # + both local backends
 ```
 
+Pick **one** `pip install` line -- each includes the base package plus the specified extras.
+
 ffmpeg is bundled via `imageio-ffmpeg`; no system install needed.
+
+You must activate the venv before running debriefr: `source /path/to/debriefr/.venv/bin/activate`. To make it always available, add this line to your `~/.zshrc` or `~/.bashrc`.
 
 ### 2. Set up credentials
 
