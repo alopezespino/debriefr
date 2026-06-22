@@ -8,6 +8,7 @@ Subcommands:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -21,7 +22,8 @@ def _add_transcribe(sub):
                         "participants, bios, handles, and cleanup automatically")
     p.add_argument("--projects-yaml", default=None,
                    help="Path to projects.yaml (default: auto-discovers upward "
-                        "from audio file location)")
+                        "from audio file location, then falls back to "
+                        "$DEBRIEFR_PROJECTS_YAML)")
     p.add_argument("--output-dir", default=None,
                    help="Directory for transcript + summary outputs "
                         "(resolved from registry when --project is used)")
@@ -82,7 +84,8 @@ def _add_sync_issues(sub):
                         "gh-project, and handles automatically")
     p.add_argument("--projects-yaml", default=None,
                    help="Path to projects.yaml (default: auto-discovers upward "
-                        "from summary file location)")
+                        "from summary file location, then falls back to "
+                        "$DEBRIEFR_PROJECTS_YAML)")
     p.add_argument("--repo", help="GitHub repo in owner/name form (required for sync)")
     p.add_argument("--gh-project", type=int, default=None,
                    help="GitHub Project v2 number (required for sync)")
@@ -120,12 +123,25 @@ def _resolve_registry(project_slug: str, projects_yaml: str | None,
     if projects_yaml:
         yaml_path = Path(projects_yaml)
     else:
+        # Precedence: upward discovery (per-tree registry) wins; fall back to
+        # DEBRIEFR_PROJECTS_YAML so projects whose output dirs live outside the
+        # registry's tree (e.g. a transcript dir under a separate repo) resolve
+        # without --projects-yaml on every run.
         yaml_path = discover_registry(discover_from)
+        if yaml_path is None:
+            env_path = os.environ.get("DEBRIEFR_PROJECTS_YAML")
+            if env_path:
+                yaml_path = Path(env_path).expanduser()
+                if not yaml_path.is_file():
+                    sys.exit(
+                        f"DEBRIEFR_PROJECTS_YAML points to a missing file: "
+                        f"{yaml_path}"
+                    )
         if yaml_path is None:
             sys.exit(
                 f"Cannot find projects.yaml (searched upward from "
                 f"{discover_from or Path.cwd()}). "
-                f"Pass --projects-yaml explicitly."
+                f"Set DEBRIEFR_PROJECTS_YAML or pass --projects-yaml explicitly."
             )
 
     data = load_registry(yaml_path)

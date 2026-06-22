@@ -185,18 +185,30 @@ def summarize(
     api_key: str,
     summary_prompt: str,
     participant_bios: dict[str, str] | None = None,
+    meeting_date: str | None = None,
 ) -> str:
     """Summarize a diarized transcript with Anthropic Claude. Streams for timeout safety."""
     import anthropic
 
     client = anthropic.Anthropic(api_key=api_key)
 
+    parts = []
+    if meeting_date:
+        # The prompt instructs the model to resolve relative dates ("next
+        # Wednesday") "using today's date as context" -- but it has no clock,
+        # so without this anchor it guesses the year. Pin it to the meeting date.
+        parts.append(
+            f"The meeting took place on {meeting_date} (YYYY-MM-DD). "
+            f"Resolve every relative date in the transcript "
+            f"(\"Wednesday\", \"next week\", \"end of month\") to an absolute "
+            f"YYYY-MM-DD date relative to {meeting_date}."
+        )
     if participant_bios:
         bios_block = "Known participants (use these bios verbatim; do not infer or override):\n"
         bios_block += "\n".join(f"- {name}: {bio}" for name, bio in participant_bios.items())
-        user_content = f"{bios_block}\n\nTranscript:\n\n{transcript_text}"
-    else:
-        user_content = f"Transcript:\n\n{transcript_text}"
+        parts.append(bios_block)
+    parts.append(f"Transcript:\n\n{transcript_text}")
+    user_content = "\n\n".join(parts)
 
     with client.messages.stream(
         model=model,
@@ -522,6 +534,7 @@ def run_meeting(
                 api_key,
                 summary_prompt,
                 participant_bios=bios_for_meeting,
+                meeting_date=date_str,
             )
             reference, summary_body = extract_reference(summary_raw)
             if reference:

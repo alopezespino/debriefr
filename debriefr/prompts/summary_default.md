@@ -21,7 +21,7 @@ Then, after one blank line, return a concise, structured summary in Markdown wit
 ## Action Items
 A Markdown table with columns: Owner | Task | Due | Priority | Notes.
 - Owner is the participant's name; if ambiguous, use "Unassigned".
-- Due is a deadline in **YYYY-MM-DD** form. Resolve relative dates ("next Wednesday", "by end of June") to absolute ISO dates using today's date as context. Use `—` when no deadline is mentioned.
+- Due is a deadline in **YYYY-MM-DD** form. Resolve relative dates ("next Wednesday", "by end of June") to absolute ISO dates anchored on the meeting date stated at the top of the user message (do NOT guess the year). Use `—` when no deadline is mentioned.
 - Priority is one of `low`, `medium`, `high`, `urgent`. Infer from urgency cues:
   - `urgent`: same-day or "before X" where X is within ~2 days
   - `high`: "top priority", "highest", "ASAP", or due within ~1 week

@@ -128,7 +128,7 @@ ProjectBeta:
 
 **Participants** are defined once and shared across projects. **Guests** are one-off speakers (same schema, separate section to avoid clutter). **GitHub** is optional per project -- omit it entirely for projects that don't use issue tracking.
 
-debriefr auto-discovers `projects.yaml` by searching upward from the audio file's location for `projects.yaml` or `projects/projects.yaml`.
+debriefr auto-discovers `projects.yaml` by searching upward from the audio file's location for `projects.yaml` or `projects/projects.yaml`. If a project's output/transcript directory lives outside the registry's directory tree (e.g. transcripts written into a separate repo), upward discovery won't find it -- set `DEBRIEFR_PROJECTS_YAML=/path/to/projects.yaml` in your shell so commands like `sync-issues` resolve the registry without passing `--projects-yaml` every time. Precedence: `--projects-yaml` flag > upward discovery > `$DEBRIEFR_PROJECTS_YAML`.
 
 ### 4. Install the `/debrief` skill
 
