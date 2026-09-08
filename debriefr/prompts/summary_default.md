@@ -19,14 +19,16 @@ Then, after one blank line, return a concise, structured summary in Markdown wit
 - Questions raised but unresolved. If none, write "None".
 
 ## Action Items
-A Markdown table with columns: Owner | Task | Due | Priority | Notes.
+A Markdown table with columns: # | Owner | Task | Due | Priority | Notes.
+- # is a sequential row number starting at 1 (1, 2, 3, …), for easy reference.
 - Owner is the participant's name; if ambiguous, use "Unassigned".
 - Due is a deadline in **YYYY-MM-DD** form. Resolve relative dates ("next Wednesday", "by end of June") to absolute ISO dates anchored on the meeting date stated at the top of the user message (do NOT guess the year). Use `—` when no deadline is mentioned.
-- Priority is one of `low`, `medium`, `high`, `urgent`. Infer from urgency cues:
+- Priority is one of `low`, `medium`, `high`, `urgent` — or `done` if the item was already completed. Infer from urgency cues:
   - `urgent`: same-day or "before X" where X is within ~2 days
   - `high`: "top priority", "highest", "ASAP", or due within ~1 week
   - `medium`: standard follow-up within a few weeks (default when unclear)
   - `low`: "nice to have", "when we have time", "long-term", no deadline
+  - `done`: the task was already finished (during or before the meeting) — keep the row for the record; it is not tracked as a new task.
 - Notes captures clarifying context (why, blockers, dependencies) — no redundant info.
 - Infer action items from statements like "I'll do X", "we need to X by Y", "can you send Z", etc.
 

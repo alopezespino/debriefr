@@ -72,19 +72,81 @@ def is_github_enabled(project_config: dict) -> bool:
     return bool(gh and gh.get("repo"))
 
 
-def discover_registry(start_dir: str | Path | None = None) -> Path | None:
+def discover_registry(
+    start_dir: str | Path | None = None,
+) -> tuple[Path, str] | None:
+    """Search upward for a registry file.
+
+    Returns ``(path, kind)`` where kind is "project" for a per-project
+    ``project.yaml`` and "registry" for ``projects.yaml`` /
+    ``projects/projects.yaml``. Returns None if nothing is found.
+    """
     d = Path(start_dir) if start_dir else Path.cwd()
     d = d.resolve()
-    candidates = ["projects.yaml", "projects/projects.yaml"]
+    candidates = [
+        ("project.yaml", "project"),
+        ("projects.yaml", "registry"),
+        ("projects/projects.yaml", "registry"),
+    ]
     while True:
-        for c in candidates:
-            p = d / c
+        for name, kind in candidates:
+            p = d / name
             if p.is_file():
-                return p
+                return p, kind
         parent = d.parent
         if parent == d:
             return None
         d = parent
+
+
+def load_single_project(yaml_path: str | Path) -> tuple[dict, dict, dict]:
+    """Build a registry triple from a per-project ``project.yaml``."""
+    path = Path(yaml_path).resolve()
+    data = load_registry(path)
+    directory = path.parent
+    people = data.get("collaborators") or data.get("participants") or {}
+    slug = data.get("name") or directory.name
+    projects = {
+        slug: {
+            "path": str(directory),
+            "transcript_dir": data.get("transcript_dir", "meetings"),
+            "default_participants": (
+                data.get("default_participants") or list(people.keys())
+            ),
+            "cleanup": data.get("cleanup", "archive-all"),
+            "github": data.get("github"),
+        }
+    }
+    return projects, people, {}
+
+
+def load_any(yaml_path: str | Path, kind: str) -> tuple[dict, dict, dict]:
+    """Load either registry flavour into the same (projects, participants, guests)."""
+    if kind == "project":
+        return load_single_project(yaml_path)
+    return parse_registry(load_registry(yaml_path))
+
+
+def merge_registries(
+    primary: tuple[dict, dict, dict],
+    fallback: tuple[dict, dict, dict],
+) -> tuple[dict, dict, dict]:
+    """Merge people from a fallback registry into a primary one.
+
+    Projects are NOT merged: a project.yaml owns its own project.
+    """
+    p_projects, p_participants, p_guests = primary
+    _, f_participants, f_guests = fallback
+
+    participants = dict(f_participants)
+    participants.update(p_participants)
+
+    guests = dict(f_guests)
+    guests.update(p_guests)
+    for name in p_participants:
+        guests.pop(name, None)
+
+    return dict(p_projects), participants, guests
 
 
 def mark_gitignore_configured(yaml_path: str | Path, slug: str) -> None:

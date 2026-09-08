@@ -24,7 +24,7 @@ You can also run every step manually from the command line -- debriefr is a stan
 ### 1. Install debriefr
 
 ```bash
-git clone https://github.com/alopezespino/debriefr.git
+git clone https://github.com/octocat/debriefr.git
 cd debriefr
 ```
 
@@ -130,6 +130,46 @@ ProjectBeta:
 
 debriefr auto-discovers `projects.yaml` by searching upward from the audio file's location for `projects.yaml` or `projects/projects.yaml`. If a project's output/transcript directory lives outside the registry's directory tree (e.g. transcripts written into a separate repo), upward discovery won't find it -- set `DEBRIEFR_PROJECTS_YAML=/path/to/projects.yaml` in your shell so commands like `sync-issues` resolve the registry without passing `--projects-yaml` every time. Precedence: `--projects-yaml` flag > upward discovery > `$DEBRIEFR_PROJECTS_YAML`.
 
+#### Per-project `project.yaml`
+
+If you only work on one project, skip the shared registry and drop a
+`project.yaml` in the project directory instead. debriefr searches upward
+both from the audio file's directory and from the current working
+directory, and checks for `project.yaml` before `projects.yaml` at each
+level. A `project.yaml` describes a single project, so `--project` is not
+needed (it stays optional; pass it only to double-check the slug).
+
+Schema:
+
+```yaml
+collaborators:            # or participants:
+  Alice:
+    bio: >-               # used verbatim in the summary's Participants section
+      ...
+    email: ...
+    github: octocat  # issue assignee; null if none
+github:
+  repo: owner/repo
+  project: 12             # Project v2 number or null
+transcript_dir: meetings  # relative to the project.yaml directory; default meetings
+default_participants: [Alice, Bob]   # default: all collaborators
+cleanup: archive-all      # optional
+name: myproject               # optional; default: directory name
+```
+
+Mapping rules: the project slug comes from `name`, falling back to the
+directory basename. `collaborators` wins over `participants` if both are
+present. Any other top-level key is ignored.
+
+Fallback merge: if `DEBRIEFR_PROJECTS_YAML` points at a central
+`projects.yaml`, its `guests:` section, and any participant not already
+defined locally, are merged in -- local entries always win, and projects
+are never merged across the two files.
+
+Passing `--project X` where `X` does not match the `project.yaml`'s slug is
+an error. In `projects.yaml` mode (a shared registry, not a per-project
+file), `--project` remains required.
+
 ### 4. Install the `/debrief` skill
 
 Copy the bundled skill template into your Claude Code workspace:
@@ -228,14 +268,27 @@ debriefr sync-issues meetings/summary.md \
 
 Features: duplicate detection (Jaccard >= 0.45), idempotent sync markers, iteration assignment by due date, issue-to-task linking in the summary.
 
+The Action Items table has a leading `#` column (a sequential row number,
+emitted automatically by the summarizer) purely for easy reference: it is
+ignored by the sync. Give a row the Priority `done` to keep it in the
+summary as a completed item without creating an issue: on sync it gets a
+`<!-- nosync -->` marker (analogous to `<!-- synced:#N -->`) so it, and
+every later run, skips it.
+
+`sync-issues` asks `Proceed? [y/N]` before creating or updating anything.
+Pass `--yes` (or `-y`) to skip that confirmation, for example when running
+from a script or CI. Without `--yes`, if stdin is not a terminal the
+command exits with an error instead of hanging on the prompt. From inside
+a project directory with a `project.yaml`, `--project` can be omitted.
+
 ## CLI reference
 
 ### `debriefr transcribe`
 
 | Flag | Description |
 |------|-------------|
-| `--project SLUG` | Resolve config from projects.yaml |
-| `--projects-yaml PATH` | Explicit registry path (skips auto-discovery) |
+| `--project SLUG` | Resolve config from projects.yaml; optional when a project.yaml is found |
+| `--projects-yaml PATH` | Explicit path to a project.yaml or projects.yaml (skips auto-discovery) |
 | `--output-dir DIR` | Output directory (resolved from registry with `--project`) |
 | `--participants NAME ...` | Speaker names (resolved from registry with `--project`) |
 | `--bio NAME=BIO` | Participant bio for summarizer (repeatable; merges with registry bios) |
@@ -264,7 +317,7 @@ Features: duplicate detection (Jaccard >= 0.45), idempotent sync markers, iterat
 
 | Flag | Description |
 |------|-------------|
-| `--project SLUG` | Resolve repo, gh-project, handles from registry |
+| `--project SLUG` | Resolve repo, gh-project, handles; optional with a project.yaml |
 | `--repo OWNER/NAME` | GitHub repo |
 | `--gh-project NUMBER` | GitHub Project v2 number |
 | `--handle NAME=HANDLE` | Name-to-GitHub-handle mapping (repeatable) |
@@ -272,6 +325,7 @@ Features: duplicate detection (Jaccard >= 0.45), idempotent sync markers, iterat
 | `--link NUMBER` | Validate existing Project, create missing fields |
 | `--title TEXT` | Title for new project (required with `--setup`) |
 | `--dry-run` | Preview without creating |
+| `--yes`, `-y` | Skip the `Proceed?` confirmation (required when stdin is not a terminal) |
 
 ## Pick a Whisper backend
 
@@ -306,4 +360,4 @@ This is a personal tool I use daily; I'm sharing it in case it helps others. Con
 
 AGPL-3.0. See [LICENSE](LICENSE) for the full text.
 
-Built by [alopezespino](https://github.com/alopezespino).
+Built by [octocat](https://github.com/octocat).

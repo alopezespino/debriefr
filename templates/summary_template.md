@@ -20,10 +20,11 @@
 
 ## Action Items
 
-| Owner | Task | Due | Priority | Notes |
-|-------|------|-----|----------|-------|
-| Alice | Example task | 2026-04-30 | medium | Optional context |
-| Bob | Another task | — | low | |
+| # | Owner | Task | Due | Priority | Notes |
+|---|-------|------|-----|----------|-------|
+| 1 | Alice | Example task | 2026-04-30 | medium | Optional context |
+| 2 | Bob | Another task | — | low | |
+| 3 | Carol | Already-finished task | — | done | Kept for the record; not synced to GitHub |
 
 ## Other Notes
 

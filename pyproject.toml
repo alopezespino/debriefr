@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "debriefr"
-version = "0.1.0"
+version = "0.2.0"
 description = "Transcribe, diarize, identify speakers, and summarize meeting recordings. Optionally sync action items to GitHub Projects."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -46,6 +46,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+dev = ["pytest"]
 mlx = ["mlx-whisper"]
 local = ["faster-whisper>=1.0"]
 all = ["mlx-whisper", "faster-whisper>=1.0"]

@@ -19,10 +19,13 @@ def _add_transcribe(sub):
                    help="Path to audio file (required unless --resume is used)")
     p.add_argument("--project", default=None,
                    help="Project slug from projects.yaml; resolves output-dir, "
-                        "participants, bios, handles, and cleanup automatically")
+                        "participants, bios, handles, and cleanup automatically. "
+                        "Optional when a project.yaml is discovered (it defines "
+                        "exactly one project)")
     p.add_argument("--projects-yaml", default=None,
-                   help="Path to projects.yaml (default: auto-discovers upward "
-                        "from audio file location, then falls back to "
+                   help="Path to a project.yaml or projects.yaml (default: "
+                        "auto-discovers either upward from the audio file "
+                        "location, then the cwd, then falls back to "
                         "$DEBRIEFR_PROJECTS_YAML)")
     p.add_argument("--output-dir", default=None,
                    help="Directory for transcript + summary outputs "
@@ -81,10 +84,12 @@ def _add_sync_issues(sub):
     p.add_argument("summary", nargs="?", help="Path to meeting summary .md (for sync mode)")
     p.add_argument("--project", default=None,
                    help="Project slug from projects.yaml; resolves repo, "
-                        "gh-project, and handles automatically")
+                        "gh-project, and handles automatically. Optional when "
+                        "a project.yaml is discovered")
     p.add_argument("--projects-yaml", default=None,
-                   help="Path to projects.yaml (default: auto-discovers upward "
-                        "from summary file location, then falls back to "
+                   help="Path to a project.yaml or projects.yaml (default: "
+                        "auto-discovers either upward from the summary file "
+                        "location, then the cwd, then falls back to "
                         "$DEBRIEFR_PROJECTS_YAML)")
     p.add_argument("--repo", help="GitHub repo in owner/name form (required for sync)")
     p.add_argument("--gh-project", type=int, default=None,
@@ -98,6 +103,9 @@ def _add_sync_issues(sub):
     p.add_argument("--handle", action="append", default=[], metavar="NAME=GH_HANDLE",
                    help="Map a participant name to a GitHub handle (repeatable)")
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--yes", "-y", action="store_true",
+                   help="Skip the Proceed? confirmation (required when stdin "
+                        "is not a terminal)")
 
 
 def _parse_bio_args(bio_args: list[str]) -> dict[str, str]:
@@ -110,28 +118,65 @@ def _parse_bio_args(bio_args: list[str]) -> dict[str, str]:
     return out
 
 
-def _resolve_registry(project_slug: str, projects_yaml: str | None,
+def _pick_discover_from(candidates) -> Path | None:
+    """Choose the directory to start upward registry discovery from.
+
+    ``candidates`` is an ordered list of directories (most specific first,
+    e.g. the audio/summary file's parent, then the current working dir).
+
+    A per-project ``project.yaml`` always wins over a shared
+    ``projects.yaml`` registry: an audio file dropped in ALE's ``inbox/``
+    would discover ALE's projects.yaml from its own parent, but if the
+    session was opened inside a project directory that project should own
+    the run. So: return the first candidate that discovers a "project"
+    kind; otherwise the first candidate that discovers anything at all;
+    otherwise None.
+    """
+    from .registry import discover_registry
+
+    found = []
+    for cand in candidates:
+        if cand is None:
+            continue
+        hit = discover_registry(cand)
+        if hit is not None and hit[1] == "project":
+            return cand
+        found.append((cand, hit))
+    for cand, hit in found:
+        if hit is not None:
+            return cand
+    return found[0][0] if found else None
+
+
+def _resolve_registry(project_slug: str | None, projects_yaml: str | None,
                       discover_from: Path | None) -> tuple[dict, dict]:
-    """Load registry and resolve project config.
+    """Load a registry (projects.yaml) or a per-project project.yaml.
 
     Returns (project_config, people) where people is the merged
     participants + guests dict.
     """
-    from .registry import (discover_registry, extract_bios, load_registry,
-                           merge_people, parse_registry, resolve_project)
+    from .registry import (discover_registry, load_any, merge_people,
+                           merge_registries, resolve_project)
+
+    kind = None
+    yaml_path = None
 
     if projects_yaml:
-        yaml_path = Path(projects_yaml)
+        yaml_path = Path(projects_yaml).expanduser()
+        kind = "project" if yaml_path.name == "project.yaml" else "registry"
     else:
         # Precedence: upward discovery (per-tree registry) wins; fall back to
         # DEBRIEFR_PROJECTS_YAML so projects whose output dirs live outside the
         # registry's tree (e.g. a transcript dir under a separate repo) resolve
         # without --projects-yaml on every run.
-        yaml_path = discover_registry(discover_from)
-        if yaml_path is None:
+        hit = discover_registry(discover_from)
+        if hit is not None:
+            yaml_path, kind = hit
+        else:
             env_path = os.environ.get("DEBRIEFR_PROJECTS_YAML")
             if env_path:
                 yaml_path = Path(env_path).expanduser()
+                kind = "registry"
                 if not yaml_path.is_file():
                     sys.exit(
                         f"DEBRIEFR_PROJECTS_YAML points to a missing file: "
@@ -139,14 +184,45 @@ def _resolve_registry(project_slug: str, projects_yaml: str | None,
                     )
         if yaml_path is None:
             sys.exit(
-                f"Cannot find projects.yaml (searched upward from "
-                f"{discover_from or Path.cwd()}). "
+                f"Cannot find project.yaml or projects.yaml (searched upward "
+                f"from {discover_from or Path.cwd()}). "
                 f"Set DEBRIEFR_PROJECTS_YAML or pass --projects-yaml explicitly."
             )
 
-    data = load_registry(yaml_path)
-    projects, participants, guests = parse_registry(data)
+    loaded = load_any(yaml_path, kind)
+
+    # Fallback merge: a project.yaml (or any registry other than the env one)
+    # still gains the shared people/guests defined in $DEBRIEFR_PROJECTS_YAML.
+    env_path = os.environ.get("DEBRIEFR_PROJECTS_YAML")
+    if env_path:
+        env_yaml = Path(env_path).expanduser()
+        if env_yaml.is_file():
+            try:
+                same = env_yaml.resolve() == Path(yaml_path).resolve()
+            except OSError:
+                same = False
+            if not same:
+                loaded = merge_registries(loaded, load_any(env_yaml, "registry"))
+
+    projects, participants, guests = loaded
     people = merge_people(participants, guests)
+
+    if kind == "project":
+        only = next(iter(projects))
+        if project_slug is None:
+            project_slug = only
+        elif project_slug.lower() != only.lower():
+            sys.exit(
+                f"--project {project_slug} does not match the project.yaml at "
+                f"{yaml_path} (slug {only})"
+            )
+        else:
+            project_slug = only
+    elif project_slug is None:
+        sys.exit(
+            f"--project is required when using a projects.yaml registry "
+            f"(found {yaml_path})"
+        )
 
     try:
         project_config = resolve_project(projects, project_slug)
@@ -155,12 +231,13 @@ def _resolve_registry(project_slug: str, projects_yaml: str | None,
 
     project_config["_yaml_path"] = yaml_path
     project_config["_people"] = people
+    project_config["_kind"] = kind
     return project_config, people
 
 
 def cmd_transcribe(args):
     from .meeting import run_meeting
-    from .registry import extract_bios
+    from .registry import discover_registry, extract_bios
 
     if not args.resume and not args.audio:
         sys.exit("audio is required unless --resume is used")
@@ -168,13 +245,20 @@ def cmd_transcribe(args):
     project_config = None
     registry_bios = {}
 
-    if args.project:
-        if args.audio:
-            discover_from = Path(args.audio).parent.resolve()
-        elif args.resume:
-            discover_from = Path(args.resume).parent.resolve()
-        else:
-            discover_from = None
+    if args.audio:
+        file_dir = Path(args.audio).parent.resolve()
+    elif args.resume:
+        file_dir = Path(args.resume).parent.resolve()
+    else:
+        file_dir = None
+    discover_from = _pick_discover_from([file_dir, Path.cwd()])
+
+    use_registry = bool(args.project or args.projects_yaml)
+    if not use_registry:
+        hit = discover_registry(discover_from) if discover_from else None
+        use_registry = hit is not None and hit[1] == "project"
+
+    if use_registry:
         project_config, people = _resolve_registry(
             args.project, args.projects_yaml, discover_from
         )
@@ -240,7 +324,7 @@ def cmd_transcribe(args):
     # Pass registry path for gitignore tracking
     if project_config:
         kwargs["_registry_yaml"] = str(project_config["_yaml_path"])
-        kwargs["_project_slug"] = args.project
+        kwargs["_project_slug"] = project_config["slug"]
 
     result = run_meeting(**kwargs)
 
@@ -258,8 +342,8 @@ def cmd_transcribe(args):
         print(f"\nLabel each unknown speaker, then enroll and resume:")
         print(f"  debriefr enroll --name <Name> --audio samples/<SPEAKER>.wav")
         resume_cmd = f"  debriefr transcribe --resume {result['cache_path']}"
-        if args.project:
-            resume_cmd += f" --project {args.project}"
+        if project_config:
+            resume_cmd += f" --project {project_config['slug']}"
         else:
             resume_cmd += f" --output-dir {output_dir}"
         if args.no_summary:
@@ -297,11 +381,19 @@ def cmd_sync_issues(args):
     project_config = None
     registry_handles = {}
 
-    if args.project:
-        from .registry import extract_handles
-        summary_dir = Path(args.summary).parent.resolve() if args.summary else None
+    from .registry import discover_registry, extract_handles
+
+    summary_dir = Path(args.summary).parent.resolve() if args.summary else None
+    discover_from = _pick_discover_from([summary_dir, Path.cwd()])
+
+    use_registry = bool(args.project or args.projects_yaml)
+    if not use_registry:
+        hit = discover_registry(discover_from) if discover_from else None
+        use_registry = hit is not None and hit[1] == "project"
+
+    if use_registry:
         project_config, people = _resolve_registry(
-            args.project, args.projects_yaml, summary_dir
+            args.project, args.projects_yaml, discover_from
         )
         registry_handles = extract_handles(people)
 
@@ -312,14 +404,14 @@ def cmd_sync_issues(args):
         if project_config and project_config.get("github"):
             repo = project_config["github"].get("repo")
         if not repo:
-            sys.exit("--repo is required for sync (or set github.repo in projects.yaml).")
+            sys.exit("--repo is required for sync (or set github.repo in project.yaml / projects.yaml).")
 
     if not gh_project:
         if project_config and project_config.get("github"):
             gh_project = project_config["github"].get("project")
         if not gh_project:
             sys.exit("--gh-project is required for sync "
-                     "(or set github.project in projects.yaml).")
+                     "(or set github.project in project.yaml / projects.yaml).")
 
     summary_path = Path(args.summary).resolve()
     if not summary_path.is_file():
@@ -329,7 +421,8 @@ def cmd_sync_issues(args):
     cli_handles = parse_handle_args(args.handle)
     handles.update(cli_handles)
 
-    sync_summary(summary_path, repo, gh_project, handles, dry_run=args.dry_run)
+    sync_summary(summary_path, repo, gh_project, handles, dry_run=args.dry_run,
+                 assume_yes=args.yes)
 
 
 def main():

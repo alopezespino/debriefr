@@ -24,6 +24,13 @@ Idempotency:
   each action-items row. The task text is also replaced with a markdown link
   to the created issue. Subsequent runs skip rows that already carry a marker.
 
+  Rows whose Priority is ``done`` are never synced: they get a ``<!-- nosync -->``
+  marker instead so they stay in the summary for the record but are skipped by
+  this and every future run.
+
+  The Action Items table's leading ``#`` column (a sequential row number) is
+  ignored here — rows are matched by header name, so the extra column is fine.
+
 Opinionated schema (don't try to customize, just match):
 
 * Priority single-select with options ``low``, ``medium``, ``high``, ``urgent``.
@@ -44,6 +51,13 @@ from pathlib import Path
 
 PRIORITY_OPTIONS = ["low", "medium", "high", "urgent"]
 SYNC_MARKER_RE = re.compile(r"<!--\s*synced:#(\d+)\s*-->")
+
+# A row whose Priority is "done" is already completed: it stays in the summary
+# for the record but is never turned into a GitHub issue. On sync it gets a
+# ``<!-- nosync -->`` marker so subsequent runs skip it (mirrors ``synced:#N``).
+DONE_PRIORITY = "done"
+NOSYNC_MARKER = " <!-- nosync -->"
+NOSYNC_MARKER_RE = re.compile(r"<!--\s*nosync\s*-->")
 
 PRIORITY_MAP = {"urgent": "urgent", "high": "high", "medium": "medium", "low": "low"}
 STATUS_MAP = {"urgent": "In Progress", "high": "Todo", "medium": "Todo", "low": "Todo"}
@@ -203,6 +217,11 @@ def resolve_owners(owner_str: str, handles: dict[str, str]) -> list[dict]:
 def normalize_priority(s: str) -> str:
     s = (s or "").strip().lower()
     return s if s in PRIORITY_OPTIONS else "medium"
+
+
+def is_done(priority: str) -> bool:
+    """True if a row's Priority marks it already completed (kept, not synced)."""
+    return (priority or "").strip().lower() == DONE_PRIORITY
 
 
 ISO_DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
@@ -369,6 +388,7 @@ def sync_summary(
     project_number: int,
     handles: dict[str, str],
     dry_run: bool = False,
+    assume_yes: bool = False,
 ) -> None:
     """Sync one summary's Action Items to GitHub Issues + Project v2."""
     text = summary_path.read_text()
@@ -378,22 +398,47 @@ def sync_summary(
         return
 
     to_sync: list[tuple[dict, str]] = []
-    already: list[tuple[dict, int]] = []
+    already: list[tuple[dict, int | None]] = []
+    done_rows: list[tuple[dict, str]] = []
     for row, line in zip(rows, row_lines):
         existing = row_synced_issue(line)
         if existing:
             already.append((row, existing))
+        elif NOSYNC_MARKER_RE.search(line):
+            already.append((row, None))
+        elif is_done(row.get("Priority", "")):
+            done_rows.append((row, line))
         else:
             to_sync.append((row, line))
 
     owner = current_github_user()
 
     print(f"Action items in {summary_path.name}: {len(rows)} total "
-          f"({len(to_sync)} new, {len(already)} already synced)")
+          f"({len(to_sync)} new, {len(already)} already synced, {len(done_rows)} done)")
     if already:
         for row, num in already:
-            print(f"  [synced #{num}] {row.get('Task', '')[:70]}")
+            tag = f"synced #{num}" if num else "done, not synced"
+            print(f"  [{tag}] {row.get('Task', '')[:70]}")
+    if done_rows:
+        for row, _ in done_rows:
+            print(f"  [done — kept in summary, not synced] {row.get('Task', '')[:70]}")
+
     if not to_sync:
+        # Nothing to create/update; just persist the nosync markers for done rows.
+        if not done_rows:
+            return
+        if dry_run:
+            print(f"\n[dry-run] {len(done_rows)} done row(s) would be marked "
+                  f"'<!-- nosync -->'; nothing synced.")
+            return
+        new_text = text
+        for row, line in done_rows:
+            if NOSYNC_MARKER not in line:
+                new_text = new_text.replace(line, line + NOSYNC_MARKER, 1)
+        if new_text != text:
+            summary_path.write_text(new_text)
+            print(f"\nMarked {len(done_rows)} done row(s) as not-synced in "
+                  f"{summary_path.name}.")
         return
 
     print("Checking for duplicates against open issues...")
@@ -448,9 +493,12 @@ def sync_summary(
         print("\n[dry-run] nothing created or updated.")
         return
 
-    if input("\nProceed? [y/N] ").strip().lower() != "y":
-        print("Aborted.")
-        return
+    if not assume_yes:
+        if not sys.stdin.isatty():
+            sys.exit("stdin is not a terminal; pass --yes to skip the confirmation")
+        if input("\nProceed? [y/N] ").strip().lower() != "y":
+            print("Aborted.")
+            return
 
     project_id, fields = fetch_project_metadata(owner, project_number)
     priority_field = fields.get("priority")
@@ -541,6 +589,11 @@ def sync_summary(
         linked_task = f"[{task}]({issue_url})"
         modified_line = p["line"].replace(task, linked_task, 1)
         new_text = new_text.replace(p["line"], modified_line + marker, 1)
+
+    # Done rows: keep them in the summary but mark them so they're never synced.
+    for row, line in done_rows:
+        if NOSYNC_MARKER not in line:
+            new_text = new_text.replace(line, line + NOSYNC_MARKER, 1)
 
     if new_text != text:
         summary_path.write_text(new_text)
