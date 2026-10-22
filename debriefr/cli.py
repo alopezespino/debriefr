@@ -66,8 +66,9 @@ def _add_transcribe(sub):
                         "--project, none without)")
     p.add_argument("--archive-dir", default=None,
                    help="[DEPRECATED: use --cleanup] Move source audio to this directory")
-    p.add_argument("--archive-ttl-days", type=int, default=7,
-                   help="Delete archived audio older than this (default: 7)")
+    p.add_argument("--archive-ttl-days", type=int, default=None, metavar="N",
+                   help="Move archived files older than N days to the system "
+                        "Trash (default: keep archived files forever)")
 
 
 def _add_enroll(sub):

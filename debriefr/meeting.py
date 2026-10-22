@@ -242,14 +242,47 @@ def archive_source(audio: Path, archive_dir: Path) -> Path:
     return dest
 
 
-def prune_archive(archive_dir: Path, ttl_days: int) -> None:
-    if not archive_dir.is_dir():
+def _trash_argv(path: Path) -> list[str] | None:
+    """Command that moves ``path`` to the system Trash, or None if none exists.
+
+    ``trash`` ships with macOS 15+ and with trash-cli on Linux; ``gio trash``
+    with GLib; older macOS falls back to asking Finder via ``osascript``.
+    """
+    for cmd in (["trash"], ["trash-put"], ["gio", "trash"]):
+        if shutil.which(cmd[0]):
+            return cmd + [str(path)]
+    if sys.platform == "darwin" and shutil.which("osascript"):
+        p = str(path).replace("\\", "\\\\").replace('"', '\\"')
+        return ["osascript", "-e",
+                f'tell application "Finder" to delete POSIX file "{p}"']
+    return None
+
+
+def prune_archive(archive_dir: Path, ttl_days: int | None) -> None:
+    """Move top-level files in ``archive_dir`` older than ``ttl_days`` to the Trash.
+
+    ``ttl_days=None`` (the default) keeps archived files forever. Files are
+    never unlinked: without a Trash command nothing is removed.
+    """
+    if ttl_days is None or not archive_dir.is_dir():
         return
     cutoff = datetime.now() - timedelta(days=ttl_days)
-    for f in archive_dir.iterdir():
-        if f.is_file() and datetime.fromtimestamp(f.stat().st_mtime) < cutoff:
-            print(f"      pruning {f.name} (age > {ttl_days}d)")
-            f.unlink()
+    old = [f for f in sorted(archive_dir.iterdir())
+           if f.is_file() and datetime.fromtimestamp(f.stat().st_mtime) < cutoff]
+    if not old:
+        return
+    if _trash_argv(old[0]) is None:
+        print(f"      [warn] --archive-ttl-days {ttl_days}: no Trash command found "
+              f"(trash, trash-put, gio, osascript); refusing to delete "
+              f"{len(old)} archived file(s) in {archive_dir}", file=sys.stderr)
+        return
+    for f in old:
+        r = subprocess.run(_trash_argv(f), capture_output=True, text=True)
+        if r.returncode == 0:
+            print(f"      moved {f.name} to Trash (age > {ttl_days}d)")
+        else:
+            print(f"      [warn] could not move {f.name} to Trash: "
+                  f"{r.stderr.strip()}", file=sys.stderr)
 
 
 def default_summary_prompt_path() -> Path:
@@ -264,7 +297,7 @@ def _apply_cleanup(
     transcript_txt: Path,
     output_dir: Path,
     archive_base: Path | None,
-    archive_ttl_days: int,
+    archive_ttl_days: int | None,
     registry_yaml: str | None = None,
     project_slug: str | None = None,
 ) -> None:
@@ -345,7 +378,7 @@ def run_meeting(
     slug: str | None = None,
     cleanup: str | None = None,
     archive_base: str | Path | None = None,
-    archive_ttl_days: int = 7,
+    archive_ttl_days: int | None = None,
     archive_dir: str | Path | None = None,
     resume: str | Path | None = None,
     _registry_yaml: str | None = None,

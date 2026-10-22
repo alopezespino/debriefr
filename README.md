@@ -233,11 +233,17 @@ After processing, debriefr cleans up intermediates. Set the mode with `--cleanup
 
 | Mode | What it does | Best for |
 |------|-------------|----------|
-| `archive-all` | Moves audio + `.txt` + `.json` to `.audio-archive/`. Only `.md` stays. Prunes files older than `--archive-ttl-days` (default: 7). | Default with `--project`. |
+| `archive-all` | Moves audio + `.txt` + `.json` to `.audio-archive/`. Only `.md` stays. | Default with `--project`. |
 | `archive-audio` | Moves only source audio. Transcripts stay alongside the summary. | Transcripts in the repo, raw audio out. |
 | `gitignore` | Keeps everything in place. Adds patterns to `.gitignore` (once per project). | All files locally, nothing in git. |
 
 Without `--project` and without `--cleanup`, no cleanup is performed.
+
+Archived files are kept indefinitely. To prune, pass `--archive-ttl-days N`
+explicitly: files directly in `.audio-archive/` that are older than N days are
+moved to the system Trash (`trash`, `trash-put`, `gio trash`, or Finder on
+macOS), never deleted outright. If no Trash command is available, debriefr
+refuses to prune and says so; nothing is removed.
 
 ## Syncing action items to GitHub
 
@@ -303,7 +309,7 @@ a project directory with a `project.yaml`, `--project` can be omitted.
 | `--skip-sampling` | Don't pause for unknown speakers |
 | `--resume CACHE` | Resume from cache after enrollment |
 | `--cleanup MODE` | `gitignore`, `archive-all`, or `archive-audio` |
-| `--archive-ttl-days N` | Prune archived files older than N days (default: 7) |
+| `--archive-ttl-days N` | Move archived files older than N days to the system Trash (default: never prune) |
 
 ### `debriefr enroll`
 
