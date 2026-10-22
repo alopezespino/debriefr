@@ -35,6 +35,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from .backends import WhisperBackend
+from .decoder import audio_decoder_error, decoder_failure_message
 from .pipeline import (
     align_transcript,
     deserialize_diarization,
@@ -242,14 +243,47 @@ def archive_source(audio: Path, archive_dir: Path) -> Path:
     return dest
 
 
-def prune_archive(archive_dir: Path, ttl_days: int) -> None:
-    if not archive_dir.is_dir():
+def _trash_argv(path: Path) -> list[str] | None:
+    """Command that moves ``path`` to the system Trash, or None if none exists.
+
+    ``trash`` ships with macOS 15+ and with trash-cli on Linux; ``gio trash``
+    with GLib; older macOS falls back to asking Finder via ``osascript``.
+    """
+    for cmd in (["trash"], ["trash-put"], ["gio", "trash"]):
+        if shutil.which(cmd[0]):
+            return cmd + [str(path)]
+    if sys.platform == "darwin" and shutil.which("osascript"):
+        p = str(path).replace("\\", "\\\\").replace('"', '\\"')
+        return ["osascript", "-e",
+                f'tell application "Finder" to delete POSIX file "{p}"']
+    return None
+
+
+def prune_archive(archive_dir: Path, ttl_days: int | None) -> None:
+    """Move top-level files in ``archive_dir`` older than ``ttl_days`` to the Trash.
+
+    ``ttl_days=None`` (the default) keeps archived files forever. Files are
+    never unlinked: without a Trash command nothing is removed.
+    """
+    if ttl_days is None or not archive_dir.is_dir():
         return
     cutoff = datetime.now() - timedelta(days=ttl_days)
-    for f in archive_dir.iterdir():
-        if f.is_file() and datetime.fromtimestamp(f.stat().st_mtime) < cutoff:
-            print(f"      pruning {f.name} (age > {ttl_days}d)")
-            f.unlink()
+    old = [f for f in sorted(archive_dir.iterdir())
+           if f.is_file() and datetime.fromtimestamp(f.stat().st_mtime) < cutoff]
+    if not old:
+        return
+    if _trash_argv(old[0]) is None:
+        print(f"      [warn] --archive-ttl-days {ttl_days}: no Trash command found "
+              f"(trash, trash-put, gio, osascript); refusing to delete "
+              f"{len(old)} archived file(s) in {archive_dir}", file=sys.stderr)
+        return
+    for f in old:
+        r = subprocess.run(_trash_argv(f), capture_output=True, text=True)
+        if r.returncode == 0:
+            print(f"      moved {f.name} to Trash (age > {ttl_days}d)")
+        else:
+            print(f"      [warn] could not move {f.name} to Trash: "
+                  f"{r.stderr.strip()}", file=sys.stderr)
 
 
 def default_summary_prompt_path() -> Path:
@@ -264,14 +298,24 @@ def _apply_cleanup(
     transcript_txt: Path,
     output_dir: Path,
     archive_base: Path | None,
-    archive_ttl_days: int,
+    archive_ttl_days: int | None,
     registry_yaml: str | None = None,
     project_slug: str | None = None,
+    keep_transcripts: bool = False,
 ) -> None:
+    """Post-run cleanup. ``keep_transcripts`` (set when no summary was written)
+    leaves the ``.txt``/``.json`` in ``output_dir`` under ``archive-all``: they
+    are the input for the summary still to be written."""
     archive_dir = (archive_base or output_dir.parent) / ".audio-archive"
 
     if cleanup == "archive-all":
-        for f in (original_audio, transcript_json, transcript_txt):
+        to_archive = [original_audio]
+        if keep_transcripts:
+            print(f"      no summary yet; keeping {transcript_txt.name} and "
+                  f"{transcript_json.name} in {output_dir}")
+        else:
+            to_archive += [transcript_json, transcript_txt]
+        for f in to_archive:
             if f.exists():
                 dest = archive_source(f, archive_dir)
                 print(f"      archived {f.name} -> {dest}")
@@ -293,6 +337,7 @@ def _apply_cleanup(
             _apply_cleanup(
                 "archive-all", original_audio, transcript_json, transcript_txt,
                 output_dir, archive_base, archive_ttl_days,
+                keep_transcripts=keep_transcripts,
             )
             return
 
@@ -345,7 +390,7 @@ def run_meeting(
     slug: str | None = None,
     cleanup: str | None = None,
     archive_base: str | Path | None = None,
-    archive_ttl_days: int = 7,
+    archive_ttl_days: int | None = None,
     archive_dir: str | Path | None = None,
     resume: str | Path | None = None,
     _registry_yaml: str | None = None,
@@ -368,17 +413,26 @@ def run_meeting(
     if archive_dir and not cleanup:
         cleanup = "archive-audio"
         archive_base = archive_dir
+    # Diarization needs pyannote's audio decoder; check it before Whisper runs,
+    # or a broken FFmpeg surfaces only after the transcription is done.
+    decoder_err = audio_decoder_error()
+    if decoder_err:
+        raise RuntimeError(decoder_failure_message(decoder_err))
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     enrollments_dir = Path(enrollments_dir)
     samples_dir = Path(samples_dir)
 
-    # ── Resume path: load cached transcription + diarization ──────────
+    # ── Resume path: load cached transcription (+ diarization if cached) ──
     if resume:
-        cache = load_cache(Path(resume))
+        cache_path = Path(resume)
+        cache = load_cache(cache_path)
         segments = cache["whisper_segments"]
         detected_lang = cache["language"]
-        diarization = deserialize_diarization(cache["diarization_turns"])
+        turns_cached = cache.get("diarization_turns")
+        diarization = (deserialize_diarization(turns_cached)
+                       if turns_cached is not None else None)
         original_audio = Path(cache["original_audio"])
         if not original_audio.exists():
             raise FileNotFoundError(f"Original audio not found: {original_audio}")
@@ -416,7 +470,35 @@ def run_meeting(
         segments, detected_lang = transcribe(
             wav, backend, whisper_model, language,
         )
-        diarization, _ = diarize(wav, num_speakers, hf_token)
+        # Cache the transcription at once, so a failure in any later step
+        # resumes without re-running Whisper.
+        cache_path = output_dir / f"{date_str}_{fallback_slug}.cache.json"
+        cache = dict(
+            whisper_segments=segments,
+            diarization_turns=None,
+            original_audio=str(original_audio),
+            language=detected_lang,
+            people=people,
+            date_str=date_str,
+            fallback_slug=fallback_slug,
+            num_speakers=num_speakers,
+        )
+        save_cache(cache_path, **cache)
+        diarization = None
+
+    if diarization is None:
+        try:
+            diarization, _ = diarize(
+                wav, num_speakers or cache.get("num_speakers"), hf_token,
+            )
+        except BaseException:
+            print(f"      [info] transcription is cached; resume with: "
+                  f"debriefr transcribe --resume {cache_path}", file=sys.stderr)
+            if wav_is_derived:
+                shutil.rmtree(wav.parent, ignore_errors=True)
+            raise
+        cache["diarization_turns"] = serialize_diarization(diarization)
+        save_cache(cache_path, **cache)
 
     # ── Identification against available enrollments ──────────────────
     enroll_subset, enrolled = collect_enrollments(enrollments_dir, people)
@@ -454,16 +536,8 @@ def run_meeting(
             if unknown_clips:
                 tentative_stem = f"{date_str}_{fallback_slug}"
                 cache_path = output_dir / f"{tentative_stem}.cache.json"
-                save_cache(
-                    cache_path,
-                    whisper_segments=segments,
-                    diarization_turns=serialize_diarization(diarization),
-                    original_audio=str(original_audio),
-                    language=detected_lang,
-                    people=people,
-                    date_str=date_str,
-                    fallback_slug=fallback_slug,
-                )
+                cache["people"] = people
+                save_cache(cache_path, **cache)
 
                 return {
                     "status": "needs_sampling",
@@ -552,13 +626,16 @@ def run_meeting(
             summary_path.write_text(summary_body)
             print(f"      wrote {summary_path}")
 
-        # Clean up cache file if we're resuming and succeeded
-        if resume:
-            cache_file = Path(resume)
-            if cache_file.exists():
-                cache_file.unlink()
-                print(f"      cleaned up cache: {cache_file}")
+        # The run succeeded: the cache (fresh or resumed) is no longer needed.
+        if cache_path.exists():
+            cache_path.unlink()
+            print(f"      cleaned up cache: {cache_path}")
 
+    except BaseException:
+        if cache_path.exists():
+            print(f"      [info] resume with: debriefr transcribe --resume "
+                  f"{cache_path}", file=sys.stderr)
+        raise
     finally:
         shutil.rmtree(enroll_subset, ignore_errors=True)
         if wav_is_derived:
@@ -571,6 +648,7 @@ def run_meeting(
             Path(archive_base) if archive_base else None,
             archive_ttl_days,
             _registry_yaml, _project_slug,
+            keep_transcripts=summary_path is None,
         )
 
     return {

@@ -66,8 +66,9 @@ def _add_transcribe(sub):
                         "--project, none without)")
     p.add_argument("--archive-dir", default=None,
                    help="[DEPRECATED: use --cleanup] Move source audio to this directory")
-    p.add_argument("--archive-ttl-days", type=int, default=7,
-                   help="Delete archived audio older than this (default: 7)")
+    p.add_argument("--archive-ttl-days", type=int, default=None, metavar="N",
+                   help="Move archived files older than N days to the system "
+                        "Trash (default: keep archived files forever)")
 
 
 def _add_enroll(sub):
@@ -77,6 +78,9 @@ def _add_enroll(sub):
                    help="One or more audio files (wav/flac)")
     p.add_argument("--out-dir", default="enrollments",
                    help="Directory to save embeddings (default: ./enrollments)")
+    p.add_argument("--replace", action="store_true",
+                   help="Overwrite an existing enrollment instead of appending "
+                        "the new clips to it")
 
 
 def _add_sync_issues(sub):
@@ -326,6 +330,10 @@ def cmd_transcribe(args):
         kwargs["_registry_yaml"] = str(project_config["_yaml_path"])
         kwargs["_project_slug"] = project_config["slug"]
 
+    # Before any transcription: restart with a working FFmpeg or exit.
+    from .decoder import ensure_audio_decoder
+    ensure_audio_decoder()
+
     result = run_meeting(**kwargs)
 
     if result["status"] == "needs_sampling":
@@ -352,8 +360,11 @@ def cmd_transcribe(args):
 
 
 def cmd_enroll(args):
+    from .decoder import ensure_audio_decoder
     from .enroll import enroll_speaker
-    enroll_speaker(args.name, args.audio, out_dir=args.out_dir)
+    ensure_audio_decoder()
+    enroll_speaker(args.name, args.audio, out_dir=args.out_dir,
+                   replace=args.replace)
 
 
 def cmd_sync_issues(args):
@@ -421,8 +432,11 @@ def cmd_sync_issues(args):
     cli_handles = parse_handle_args(args.handle)
     handles.update(cli_handles)
 
+    gh_cfg = (project_config or {}).get("github") or {}
     sync_summary(summary_path, repo, gh_project, handles, dry_run=args.dry_run,
-                 assume_yes=args.yes)
+                 assume_yes=args.yes,
+                 priority_map=gh_cfg.get("priority_map"),
+                 status_map=gh_cfg.get("status_map"))
 
 
 def main():

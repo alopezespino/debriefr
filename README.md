@@ -42,7 +42,14 @@ pip install -e .[all]    # + both local backends
 
 Pick **one** `pip install` line -- each includes the base package plus the specified extras.
 
-ffmpeg is bundled via `imageio-ffmpeg`; no system install needed.
+ffmpeg for converting recordings to wav is bundled via `imageio-ffmpeg`. Diarization
+reads audio through pyannote's decoder (torchcodec), which loads the system FFmpeg
+shared libraries and supports FFmpeg 4 to 8 only. `debriefr transcribe` and
+`debriefr enroll` check that decoder before any work starts. On macOS with Homebrew
+FFmpeg 9, install the keg-only FFmpeg 8 (`brew install ffmpeg@8`): when the check
+fails and `ffmpeg@8` (or 4 to 7) is installed, the CLI restarts itself once with
+`DYLD_LIBRARY_PATH` pointing at that keg. Otherwise it stops with a message naming
+the fix.
 
 You must activate the venv before running debriefr: `source /path/to/debriefr/.venv/bin/activate`. To make it always available, add this line to your `~/.zshrc` or `~/.bashrc`.
 
@@ -172,11 +179,23 @@ file), `--project` remains required.
 
 ### 4. Install the `/debrief` skill
 
-Copy the bundled skill template into your Claude Code workspace:
+Copy the bundled skill template into your Claude Code commands, per workspace or for
+all workspaces (it is the single source of the command; copy it again after updating
+debriefr):
 
 ```bash
 mkdir -p .claude/commands
 cp debriefr/templates/debrief.md .claude/commands/debrief.md
+# or, for every workspace:
+cp debriefr/templates/debrief.md ~/.claude/commands/debrief.md
+```
+
+The command finds debriefr through `$DEBRIEFR_VENV` (the venv directory) or, failing
+that, `debriefr` on your `PATH`. Since Claude Code runs each shell command in a fresh
+shell, add the variable to your shell profile:
+
+```bash
+export DEBRIEFR_VENV=/path/to/debriefr/.venv
 ```
 
 ### 5. Use it
@@ -214,6 +233,11 @@ debriefr transcribe --resume ./meetings/2026-04-17_meeting.cache.json \
   --project ProjectAlpha
 ```
 
+The transcription is also cached as soon as Whisper finishes (and again after
+diarization), in `<output-dir>/<date>_<slug>.cache.json`. If a later step fails, the
+error output names the `--resume` command; resuming skips Whisper. The cache is
+removed after a successful run.
+
 As your enrollment library grows, the pipeline matches more speakers automatically. Use `--skip-sampling` to skip the interactive pause when you want to proceed with whatever enrollments are available.
 
 ### Manual enrollment
@@ -227,17 +251,25 @@ debriefr enroll --name Bob   --audio samples/bob_1.wav samples/bob_2.wav
 
 Multiple clips per person are stored individually. At identification time, each cluster is scored against every clip and the best cosine match wins -- so contamination in one clip doesn't block a match on another.
 
+Enrolling a name that already has an `enrollments/<Name>.npy` appends the new clips to it; a clip whose embedding is already stored is skipped. Pass `--replace` to overwrite the stored enrollment instead.
+
 ## Cleanup modes
 
 After processing, debriefr cleans up intermediates. Set the mode with `--cleanup` or per-project in `projects.yaml`:
 
 | Mode | What it does | Best for |
 |------|-------------|----------|
-| `archive-all` | Moves audio + `.txt` + `.json` to `.audio-archive/`. Only `.md` stays. Prunes files older than `--archive-ttl-days` (default: 7). | Default with `--project`. |
+| `archive-all` | Moves audio + `.txt` + `.json` to `.audio-archive/`. Only `.md` stays. With `--no-summary` the `.txt` and `.json` stay in the output directory (they are the input for the summary still to be written); only the audio moves. | Default with `--project`. |
 | `archive-audio` | Moves only source audio. Transcripts stay alongside the summary. | Transcripts in the repo, raw audio out. |
 | `gitignore` | Keeps everything in place. Adds patterns to `.gitignore` (once per project). | All files locally, nothing in git. |
 
 Without `--project` and without `--cleanup`, no cleanup is performed.
+
+Archived files are kept indefinitely. To prune, pass `--archive-ttl-days N`
+explicitly: files directly in `.audio-archive/` that are older than N days are
+moved to the system Trash (`trash`, `trash-put`, `gio trash`, or Finder on
+macOS), never deleted outright. If no Trash command is available, debriefr
+refuses to prune and says so; nothing is removed.
 
 ## Syncing action items to GitHub
 
@@ -267,6 +299,18 @@ debriefr sync-issues meetings/summary.md \
 ```
 
 Features: duplicate detection (Jaccard >= 0.45), idempotent sync markers, iteration assignment by due date, issue-to-task linking in the summary.
+
+The sync sets Priority to `low`/`medium`/`high`/`urgent` and Status to `In Progress` (urgent) or `Todo` (the rest). If your board's single-select options have other names, map them per project under `github:` instead of renaming the options:
+
+```yaml
+github:
+  repo: example-org/example-repo
+  project: 12
+  priority_map: {urgent: P0, high: P1, medium: P2}
+  status_map: {Todo: Ready}
+```
+
+Keys and option names match case-insensitively. A value with no entry in the map is sent unchanged, so a board without a matching option prints `option '...' not found` and leaves that field empty (here: `low`).
 
 The Action Items table has a leading `#` column (a sequential row number,
 emitted automatically by the summarizer) purely for easy reference: it is
@@ -303,7 +347,7 @@ a project directory with a `project.yaml`, `--project` can be omitted.
 | `--skip-sampling` | Don't pause for unknown speakers |
 | `--resume CACHE` | Resume from cache after enrollment |
 | `--cleanup MODE` | `gitignore`, `archive-all`, or `archive-audio` |
-| `--archive-ttl-days N` | Prune archived files older than N days (default: 7) |
+| `--archive-ttl-days N` | Move archived files older than N days to the system Trash (default: never prune) |
 
 ### `debriefr enroll`
 
@@ -312,6 +356,7 @@ a project directory with a `project.yaml`, `--project` can be omitted.
 | `--name NAME` | Speaker name |
 | `--audio FILE ...` | One or more reference audio files |
 | `--out-dir DIR` | Enrollment output directory (default: `./enrollments`) |
+| `--replace` | Overwrite an existing enrollment (default: append the new clips) |
 
 ### `debriefr sync-issues`
 

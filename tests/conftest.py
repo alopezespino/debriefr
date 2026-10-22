@@ -13,6 +13,12 @@ def write_yaml(path: Path, data: dict) -> Path:
     return path
 
 
+@pytest.fixture(autouse=True)
+def _no_decoder_reexec(monkeypatch):
+    """Never let a test re-execute the interpreter through the decoder pre-flight."""
+    monkeypatch.setenv("DEBRIEFR_DECODER_REEXEC", "1")
+
+
 @pytest.fixture
 def write_yaml_file():
     return write_yaml
