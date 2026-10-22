@@ -83,3 +83,82 @@ def test_summary_archive_all_still_archives_transcripts(env):
     assert (archive / "2026-10-21_weekly_sync.json").exists()
     assert (archive / "standup.wav").exists()
     assert sorted(p.name for p in env["out"].iterdir()) == ["2026-10-21_weekly_sync.md"]
+
+
+# --- fix 3: decoder pre-flight and the early transcription cache -----------
+
+def test_broken_decoder_stops_before_transcription(env, monkeypatch):
+    monkeypatch.setattr(meeting, "audio_decoder_error",
+                        lambda: "pyannote cannot load its audio decoder",
+                        raising=False)
+
+    with pytest.raises(RuntimeError) as exc:
+        meeting.run_meeting(**env["kwargs"], skip_summary=True)
+    assert "audio decoder" in str(exc.value)
+    assert env["calls"]["transcribe"] == 0
+
+
+def _cache_path(env):
+    return env["out"] / "2026-10-21_standup.cache.json"
+
+
+def test_transcription_is_cached_before_diarization_fails(env, monkeypatch):
+    def broken_diarize(wav, num_speakers, hf_token):
+        raise NameError("name 'AudioDecoder' is not defined")
+    monkeypatch.setattr(meeting, "diarize", broken_diarize)
+
+    with pytest.raises(NameError):
+        meeting.run_meeting(**env["kwargs"], skip_summary=True, num_speakers=2)
+
+    cache = meeting.load_cache(_cache_path(env))
+    assert cache["whisper_segments"] == SEGMENTS
+    assert cache["diarization_turns"] is None
+    assert cache["num_speakers"] == 2
+    assert cache["people"] == ["Alice", "Bob"]
+
+
+def test_resume_from_transcription_only_cache_skips_whisper(env, monkeypatch):
+    real_diarize = meeting.diarize
+    seen = {}
+
+    def broken_diarize(wav, num_speakers, hf_token):
+        raise NameError("name 'AudioDecoder' is not defined")
+    monkeypatch.setattr(meeting, "diarize", broken_diarize)
+    with pytest.raises(NameError):
+        meeting.run_meeting(**env["kwargs"], skip_summary=True, num_speakers=2)
+
+    def recording_diarize(wav, num_speakers, hf_token):
+        seen["num_speakers"] = num_speakers
+        return real_diarize(wav, num_speakers, hf_token)
+    monkeypatch.setattr(meeting, "diarize", recording_diarize)
+
+    kw = {k: v for k, v in env["kwargs"].items() if k not in ("audio", "date")}
+    res = meeting.run_meeting(**kw, skip_summary=True, resume=str(_cache_path(env)))
+
+    assert res["status"] == "complete"
+    assert env["calls"]["transcribe"] == 1      # Whisper ran once, not twice
+    assert seen["num_speakers"] == 2            # taken from the cache
+    assert res["transcript_txt"].exists()
+    assert not _cache_path(env).exists()        # removed after success
+
+
+def test_fresh_success_leaves_no_cache(env):
+    res = meeting.run_meeting(**env["kwargs"], skip_summary=True)
+    assert res["status"] == "complete"
+    assert list(env["out"].glob("*.cache.json")) == []
+
+
+def test_resume_old_format_cache_skips_diarization(env):
+    env["out"].mkdir(parents=True)
+    meeting.save_cache(
+        _cache_path(env),
+        whisper_segments=SEGMENTS, diarization_turns=TURNS,
+        original_audio=str(env["audio"]), language="en",
+        people=["Alice", "Bob"], date_str="2026-10-21", fallback_slug="standup",
+    )
+    kw = {k: v for k, v in env["kwargs"].items() if k not in ("audio", "date")}
+
+    res = meeting.run_meeting(**kw, skip_summary=True, resume=str(_cache_path(env)))
+
+    assert res["status"] == "complete"
+    assert env["calls"] == {"transcribe": 0, "diarize": 0}

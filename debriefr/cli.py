@@ -327,6 +327,10 @@ def cmd_transcribe(args):
         kwargs["_registry_yaml"] = str(project_config["_yaml_path"])
         kwargs["_project_slug"] = project_config["slug"]
 
+    # Before any transcription: restart with a working FFmpeg or exit.
+    from .decoder import ensure_audio_decoder
+    ensure_audio_decoder()
+
     result = run_meeting(**kwargs)
 
     if result["status"] == "needs_sampling":
@@ -353,7 +357,9 @@ def cmd_transcribe(args):
 
 
 def cmd_enroll(args):
+    from .decoder import ensure_audio_decoder
     from .enroll import enroll_speaker
+    ensure_audio_decoder()
     enroll_speaker(args.name, args.audio, out_dir=args.out_dir)
 
 

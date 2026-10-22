@@ -42,7 +42,14 @@ pip install -e .[all]    # + both local backends
 
 Pick **one** `pip install` line -- each includes the base package plus the specified extras.
 
-ffmpeg is bundled via `imageio-ffmpeg`; no system install needed.
+ffmpeg for converting recordings to wav is bundled via `imageio-ffmpeg`. Diarization
+reads audio through pyannote's decoder (torchcodec), which loads the system FFmpeg
+shared libraries and supports FFmpeg 4 to 8 only. `debriefr transcribe` and
+`debriefr enroll` check that decoder before any work starts. On macOS with Homebrew
+FFmpeg 9, install the keg-only FFmpeg 8 (`brew install ffmpeg@8`): when the check
+fails and `ffmpeg@8` (or 4 to 7) is installed, the CLI restarts itself once with
+`DYLD_LIBRARY_PATH` pointing at that keg. Otherwise it stops with a message naming
+the fix.
 
 You must activate the venv before running debriefr: `source /path/to/debriefr/.venv/bin/activate`. To make it always available, add this line to your `~/.zshrc` or `~/.bashrc`.
 
@@ -213,6 +220,11 @@ debriefr enroll --name Alice --audio samples/Alice.wav
 debriefr transcribe --resume ./meetings/2026-04-17_meeting.cache.json \
   --project ProjectAlpha
 ```
+
+The transcription is also cached as soon as Whisper finishes (and again after
+diarization), in `<output-dir>/<date>_<slug>.cache.json`. If a later step fails, the
+error output names the `--resume` command; resuming skips Whisper. The cache is
+removed after a successful run.
 
 As your enrollment library grows, the pipeline matches more speakers automatically. Use `--skip-sampling` to skip the interactive pause when you want to proceed with whatever enrollments are available.
 

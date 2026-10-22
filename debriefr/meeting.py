@@ -35,6 +35,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from .backends import WhisperBackend
+from .decoder import audio_decoder_error, decoder_failure_message
 from .pipeline import (
     align_transcript,
     deserialize_diarization,
@@ -412,17 +413,26 @@ def run_meeting(
     if archive_dir and not cleanup:
         cleanup = "archive-audio"
         archive_base = archive_dir
+    # Diarization needs pyannote's audio decoder; check it before Whisper runs,
+    # or a broken FFmpeg surfaces only after the transcription is done.
+    decoder_err = audio_decoder_error()
+    if decoder_err:
+        raise RuntimeError(decoder_failure_message(decoder_err))
+
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     enrollments_dir = Path(enrollments_dir)
     samples_dir = Path(samples_dir)
 
-    # ── Resume path: load cached transcription + diarization ──────────
+    # ── Resume path: load cached transcription (+ diarization if cached) ──
     if resume:
-        cache = load_cache(Path(resume))
+        cache_path = Path(resume)
+        cache = load_cache(cache_path)
         segments = cache["whisper_segments"]
         detected_lang = cache["language"]
-        diarization = deserialize_diarization(cache["diarization_turns"])
+        turns_cached = cache.get("diarization_turns")
+        diarization = (deserialize_diarization(turns_cached)
+                       if turns_cached is not None else None)
         original_audio = Path(cache["original_audio"])
         if not original_audio.exists():
             raise FileNotFoundError(f"Original audio not found: {original_audio}")
@@ -460,7 +470,35 @@ def run_meeting(
         segments, detected_lang = transcribe(
             wav, backend, whisper_model, language,
         )
-        diarization, _ = diarize(wav, num_speakers, hf_token)
+        # Cache the transcription at once, so a failure in any later step
+        # resumes without re-running Whisper.
+        cache_path = output_dir / f"{date_str}_{fallback_slug}.cache.json"
+        cache = dict(
+            whisper_segments=segments,
+            diarization_turns=None,
+            original_audio=str(original_audio),
+            language=detected_lang,
+            people=people,
+            date_str=date_str,
+            fallback_slug=fallback_slug,
+            num_speakers=num_speakers,
+        )
+        save_cache(cache_path, **cache)
+        diarization = None
+
+    if diarization is None:
+        try:
+            diarization, _ = diarize(
+                wav, num_speakers or cache.get("num_speakers"), hf_token,
+            )
+        except BaseException:
+            print(f"      [info] transcription is cached; resume with: "
+                  f"debriefr transcribe --resume {cache_path}", file=sys.stderr)
+            if wav_is_derived:
+                shutil.rmtree(wav.parent, ignore_errors=True)
+            raise
+        cache["diarization_turns"] = serialize_diarization(diarization)
+        save_cache(cache_path, **cache)
 
     # ── Identification against available enrollments ──────────────────
     enroll_subset, enrolled = collect_enrollments(enrollments_dir, people)
@@ -498,16 +536,8 @@ def run_meeting(
             if unknown_clips:
                 tentative_stem = f"{date_str}_{fallback_slug}"
                 cache_path = output_dir / f"{tentative_stem}.cache.json"
-                save_cache(
-                    cache_path,
-                    whisper_segments=segments,
-                    diarization_turns=serialize_diarization(diarization),
-                    original_audio=str(original_audio),
-                    language=detected_lang,
-                    people=people,
-                    date_str=date_str,
-                    fallback_slug=fallback_slug,
-                )
+                cache["people"] = people
+                save_cache(cache_path, **cache)
 
                 return {
                     "status": "needs_sampling",
@@ -596,13 +626,16 @@ def run_meeting(
             summary_path.write_text(summary_body)
             print(f"      wrote {summary_path}")
 
-        # Clean up cache file if we're resuming and succeeded
-        if resume:
-            cache_file = Path(resume)
-            if cache_file.exists():
-                cache_file.unlink()
-                print(f"      cleaned up cache: {cache_file}")
+        # The run succeeded: the cache (fresh or resumed) is no longer needed.
+        if cache_path.exists():
+            cache_path.unlink()
+            print(f"      cleaned up cache: {cache_path}")
 
+    except BaseException:
+        if cache_path.exists():
+            print(f"      [info] resume with: debriefr transcribe --resume "
+                  f"{cache_path}", file=sys.stderr)
+        raise
     finally:
         shutil.rmtree(enroll_subset, ignore_errors=True)
         if wav_is_derived:
