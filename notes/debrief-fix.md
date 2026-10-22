@@ -71,12 +71,22 @@ the only other intermediates are the derived wav (a temp dir, removed in the
 `finally`) and the resume cache (removed on success, as before); neither is in
 `transcript_dir` after a successful run, so there is nothing else to archive.
 
+D4 (fix 4). `enroll_speaker(..., replace=False)`; CLI `--replace`. Append is the
+default: the stored stack (a legacy 1-D vector is read as one row) gets the new
+rows below it. A new clip whose embedding has cosine >= 0.9999 with a stored
+row is skipped (re-enrolling the same wav does not grow the file; the issue
+suggested deduping). A stored stack of another dimension raises `ValueError`
+naming `--replace` and leaves the file as it was. `--replace` prints how many
+stored rows it overwrites.
+
 ## Progress
 
 | Fix | Commit | Test before fix | Test after fix |
 |-----|--------|-----------------|----------------|
 | 1 prune | (see git log) | `tests/test_archive_prune.py`: 7 failed of 7 | 7 passed; suite 35/35 |
 | 2 no-summary | (see git log) | `tests/test_run_meeting.py::test_no_summary_archive_all_keeps_transcripts` failed (txt moved to archive); the with-summary contrast passed | both passed; suite 37/37 |
+| 3 decoder + cache | (see git log) | export of 21fc908: `tests/test_decoder.py` collection error (no module); `tests/test_run_meeting.py` 3 failed, 4 passed (the 4 are fix-2 tests and 2 guards) | suite 51/51 |
+| 4 enroll append | (see git log) | `tests/test_enroll.py`: 7 failed of 7 | 7 passed; suite 58/58 |
 
 Fix 1 live check (2026-10-21, macOS, `/usr/bin/trash`): a scratch
 `.audio-archive/` with one file aged 30 days and one fresh file.

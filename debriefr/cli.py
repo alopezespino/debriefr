@@ -78,6 +78,9 @@ def _add_enroll(sub):
                    help="One or more audio files (wav/flac)")
     p.add_argument("--out-dir", default="enrollments",
                    help="Directory to save embeddings (default: ./enrollments)")
+    p.add_argument("--replace", action="store_true",
+                   help="Overwrite an existing enrollment instead of appending "
+                        "the new clips to it")
 
 
 def _add_sync_issues(sub):
@@ -360,7 +363,8 @@ def cmd_enroll(args):
     from .decoder import ensure_audio_decoder
     from .enroll import enroll_speaker
     ensure_audio_decoder()
-    enroll_speaker(args.name, args.audio, out_dir=args.out_dir)
+    enroll_speaker(args.name, args.audio, out_dir=args.out_dir,
+                   replace=args.replace)
 
 
 def cmd_sync_issues(args):

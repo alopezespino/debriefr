@@ -239,6 +239,8 @@ debriefr enroll --name Bob   --audio samples/bob_1.wav samples/bob_2.wav
 
 Multiple clips per person are stored individually. At identification time, each cluster is scored against every clip and the best cosine match wins -- so contamination in one clip doesn't block a match on another.
 
+Enrolling a name that already has an `enrollments/<Name>.npy` appends the new clips to it; a clip whose embedding is already stored is skipped. Pass `--replace` to overwrite the stored enrollment instead.
+
 ## Cleanup modes
 
 After processing, debriefr cleans up intermediates. Set the mode with `--cleanup` or per-project in `projects.yaml`:
@@ -330,6 +332,7 @@ a project directory with a `project.yaml`, `--project` can be omitted.
 | `--name NAME` | Speaker name |
 | `--audio FILE ...` | One or more reference audio files |
 | `--out-dir DIR` | Enrollment output directory (default: `./enrollments`) |
+| `--replace` | Overwrite an existing enrollment (default: append the new clips) |
 
 ### `debriefr sync-issues`
 
