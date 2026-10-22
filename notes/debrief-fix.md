@@ -106,6 +106,25 @@ medium rows P2 and Ready. `low` has no entry, so a low row still prints
 "option 'low' not found" and its Priority stays empty; add `low: P2` (or a P3
 option on the board) if that matters.
 
+D5 (fix 5). `templates/debrief.md` now carries the live command's behaviour
+(project.yaml single-project mode vs projects.yaml registry mode, the
+`DEBRIEFR_PROJECTS_YAML` fallback, inbox staging in registry mode, tuning stop,
+dry-run then `--yes`, filing after sync, full-path report) in generic words.
+Venv resolution: `$DEBRIEFR_VENV/bin/debriefr` if set, else `command -v
+debriefr`; the console script's first line (`#!<venv python>`) gives the Python
+for the registry snippets, so no `python3` without debriefr is used. Checked in
+bash: unset gives NOT FOUND (then the command asks the user), set and on-PATH
+both give the venv's debriefr and python3.13. No machine path is in the file,
+so the live copy is a plain copy; the machine-specific part moves into one
+shell profile line (see Deploy steps). Fixes 1 to 4 and 6 are reflected:
+no `--archive-ttl-days` unless asked; `--no-summary` transcripts stay in
+`<transcript_dir>` (the old "move them back" note is gone); the decoder check
+and its restart line; the `--resume` hint; `enroll` appends, `--replace`;
+`priority_map`/`status_map` when the sync reports a missing option. The
+em-dash rule is phrased as "apply the user's own writing rules", with the grep
+written as `$'\xe2\x80\x94'` so the template contains no em dash; on a
+machine whose instructions forbid em dashes this keeps the live behaviour.
+
 ## Progress
 
 | Fix | Commit | Test before fix | Test after fix |
@@ -114,6 +133,7 @@ option on the board) if that matters.
 | 2 no-summary | (see git log) | `tests/test_run_meeting.py::test_no_summary_archive_all_keeps_transcripts` failed (txt moved to archive); the with-summary contrast passed | both passed; suite 37/37 |
 | 3 decoder + cache | (see git log) | export of 21fc908: `tests/test_decoder.py` collection error (no module); `tests/test_run_meeting.py` 3 failed, 4 passed (the 4 are fix-2 tests and 2 guards) | suite 51/51 |
 | 4 enroll append | (see git log) | `tests/test_enroll.py`: 7 failed of 7 | 7 passed; suite 58/58 |
+| 5 template | (see git log) | `tests/test_template.py` against the old template (export of 4baf632): 7 failed of 7 | 7 passed; suite 69/69 |
 | 6 board maps | (see git log) | `tests/test_board_maps.py`: 3 failed, 1 passed (the default-board guard) | 4 passed; suite 62/62 |
 
 Fix 1 live check (2026-10-21, macOS, `/usr/bin/trash`): a scratch
@@ -137,5 +157,30 @@ worktree root is not affected (it puts the cwd first).
 ## Open follow-ups
 
 ## Deploy steps
+
+After Ale approves the merge of `debrief-fix` into `main` (the main checkout's venv
+holds an editable install of the main checkout, so the merge is what makes the code
+live):
+
+1. Code: no reinstall is needed for an editable install; the new module
+   `debriefr/decoder.py` lives inside the package directory the editable finder
+   maps. Confirm from a neutral directory (not the repo root):
+   `$HOME/debriefr/.venv/bin/python -c "import debriefr.decoder, debriefr; print(debriefr.__file__)"`
+   must print a path inside the main checkout. If it fails, run
+   `$HOME/debriefr/.venv/bin/pip install -e $HOME/debriefr`.
+2. Check the new defaults on the live install:
+   `$HOME/debriefr/.venv/bin/debriefr transcribe --help | grep -A2 archive-ttl`
+   must say "keep archived files forever".
+3. Shell profile (the file that already exports `DEBRIEFR_PROJECTS_YAML`, i.e.
+   `~/.bashrc` on this Mac): add, next to that line,
+   `export DEBRIEFR_VENV="$HOME/debriefr/.venv"`.
+   The `DYLD_LIBRARY_PATH` export some memory notes recommend is no longer
+   needed: the CLI restarts itself with it.
+4. `/debrief` command: back up, then plain copy (no substitutions):
+   `cp ~/.claude/commands/debrief.md ~/.claude/commands/debrief.md.bak-2026-10-21`
+   then `cp $HOME/debriefr/templates/debrief.md ~/.claude/commands/debrief.md`.
+5. Add the board maps to the one project named in the fix-6 prompt (lines under
+   D6 above).
+6. Edit the outside text listed under "Text outside this repository".
 
 ## Lessons

@@ -179,11 +179,23 @@ file), `--project` remains required.
 
 ### 4. Install the `/debrief` skill
 
-Copy the bundled skill template into your Claude Code workspace:
+Copy the bundled skill template into your Claude Code commands, per workspace or for
+all workspaces (it is the single source of the command; copy it again after updating
+debriefr):
 
 ```bash
 mkdir -p .claude/commands
 cp debriefr/templates/debrief.md .claude/commands/debrief.md
+# or, for every workspace:
+cp debriefr/templates/debrief.md ~/.claude/commands/debrief.md
+```
+
+The command finds debriefr through `$DEBRIEFR_VENV` (the venv directory) or, failing
+that, `debriefr` on your `PATH`. Since Claude Code runs each shell command in a fresh
+shell, add the variable to your shell profile:
+
+```bash
+export DEBRIEFR_VENV=/path/to/debriefr/.venv
 ```
 
 ### 5. Use it
