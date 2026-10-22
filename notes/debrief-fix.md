@@ -62,11 +62,21 @@ completes, because pruning happens after the outputs are written and refusing
 loses nothing. A non-zero exit from the Trash command is reported per file and
 the file stays. No code path calls `unlink` on archived files any more.
 
+D2 (fix 2). `_apply_cleanup(..., keep_transcripts=...)`; `run_meeting` passes
+`keep_transcripts=summary_path is None`, which is true exactly when
+`--no-summary` was given. Under `archive-all` only the source audio then moves;
+the `.txt`/`.json` stay in `transcript_dir` and a line says so. The `gitignore`
+fallback to `archive-all` passes the flag through. "Intermediates" in the task:
+the only other intermediates are the derived wav (a temp dir, removed in the
+`finally`) and the resume cache (removed on success, as before); neither is in
+`transcript_dir` after a successful run, so there is nothing else to archive.
+
 ## Progress
 
 | Fix | Commit | Test before fix | Test after fix |
 |-----|--------|-----------------|----------------|
 | 1 prune | (see git log) | `tests/test_archive_prune.py`: 7 failed of 7 | 7 passed; suite 35/35 |
+| 2 no-summary | (see git log) | `tests/test_run_meeting.py::test_no_summary_archive_all_keeps_transcripts` failed (txt moved to archive); the with-summary contrast passed | both passed; suite 37/37 |
 
 Fix 1 live check (2026-10-21, macOS, `/usr/bin/trash`): a scratch
 `.audio-archive/` with one file aged 30 days and one fresh file.

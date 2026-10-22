@@ -300,11 +300,21 @@ def _apply_cleanup(
     archive_ttl_days: int | None,
     registry_yaml: str | None = None,
     project_slug: str | None = None,
+    keep_transcripts: bool = False,
 ) -> None:
+    """Post-run cleanup. ``keep_transcripts`` (set when no summary was written)
+    leaves the ``.txt``/``.json`` in ``output_dir`` under ``archive-all``: they
+    are the input for the summary still to be written."""
     archive_dir = (archive_base or output_dir.parent) / ".audio-archive"
 
     if cleanup == "archive-all":
-        for f in (original_audio, transcript_json, transcript_txt):
+        to_archive = [original_audio]
+        if keep_transcripts:
+            print(f"      no summary yet; keeping {transcript_txt.name} and "
+                  f"{transcript_json.name} in {output_dir}")
+        else:
+            to_archive += [transcript_json, transcript_txt]
+        for f in to_archive:
             if f.exists():
                 dest = archive_source(f, archive_dir)
                 print(f"      archived {f.name} -> {dest}")
@@ -326,6 +336,7 @@ def _apply_cleanup(
             _apply_cleanup(
                 "archive-all", original_audio, transcript_json, transcript_txt,
                 output_dir, archive_base, archive_ttl_days,
+                keep_transcripts=keep_transcripts,
             )
             return
 
@@ -604,6 +615,7 @@ def run_meeting(
             Path(archive_base) if archive_base else None,
             archive_ttl_days,
             _registry_yaml, _project_slug,
+            keep_transcripts=summary_path is None,
         )
 
     return {

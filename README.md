@@ -233,7 +233,7 @@ After processing, debriefr cleans up intermediates. Set the mode with `--cleanup
 
 | Mode | What it does | Best for |
 |------|-------------|----------|
-| `archive-all` | Moves audio + `.txt` + `.json` to `.audio-archive/`. Only `.md` stays. | Default with `--project`. |
+| `archive-all` | Moves audio + `.txt` + `.json` to `.audio-archive/`. Only `.md` stays. With `--no-summary` the `.txt` and `.json` stay in the output directory (they are the input for the summary still to be written); only the audio moves. | Default with `--project`. |
 | `archive-audio` | Moves only source audio. Transcripts stay alongside the summary. | Transcripts in the repo, raw audio out. |
 | `gitignore` | Keeps everything in place. Adds patterns to `.gitignore` (once per project). | All files locally, nothing in git. |
 
