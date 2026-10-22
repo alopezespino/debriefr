@@ -432,8 +432,11 @@ def cmd_sync_issues(args):
     cli_handles = parse_handle_args(args.handle)
     handles.update(cli_handles)
 
+    gh_cfg = (project_config or {}).get("github") or {}
     sync_summary(summary_path, repo, gh_project, handles, dry_run=args.dry_run,
-                 assume_yes=args.yes)
+                 assume_yes=args.yes,
+                 priority_map=gh_cfg.get("priority_map"),
+                 status_map=gh_cfg.get("status_map"))
 
 
 def main():

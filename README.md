@@ -288,6 +288,18 @@ debriefr sync-issues meetings/summary.md \
 
 Features: duplicate detection (Jaccard >= 0.45), idempotent sync markers, iteration assignment by due date, issue-to-task linking in the summary.
 
+The sync sets Priority to `low`/`medium`/`high`/`urgent` and Status to `In Progress` (urgent) or `Todo` (the rest). If your board's single-select options have other names, map them per project under `github:` instead of renaming the options:
+
+```yaml
+github:
+  repo: example-org/example-repo
+  project: 12
+  priority_map: {urgent: P0, high: P1, medium: P2}
+  status_map: {Todo: Ready}
+```
+
+Keys and option names match case-insensitively. A value with no entry in the map is sent unchanged, so a board without a matching option prints `option '...' not found` and leaves that field empty (here: `low`).
+
 The Action Items table has a leading `#` column (a sequential row number,
 emitted automatically by the summarizer) purely for easy reference: it is
 ignored by the sync. Give a row the Priority `done` to keep it in the

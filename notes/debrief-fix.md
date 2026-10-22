@@ -79,6 +79,33 @@ suggested deduping). A stored stack of another dimension raises `ValueError`
 naming `--replace` and leaves the file as it was. `--replace` prints how many
 stored rows it overwrites.
 
+D6 (fix 6). `sync_summary(..., priority_map=None, status_map=None)`; the CLI
+reads both from the resolved project's `github:` block (project.yaml or a
+projects.yaml entry; both loaders pass the whole block through). `map_option`
+compares keys case-insensitively and sends unmapped values unchanged, so the
+default (no maps) is byte-for-byte the old behaviour. Status keys are
+debriefr's own status names (`Todo`, `In Progress`), not priorities. Option
+names on the board were already matched case-insensitively, so `In Progress`
+finds a board's `In progress` without a map entry.
+
+Config lines for the project whose board uses P0/P1/P2 and
+Backlog/Ready/In progress/In review/Done (add under its existing `github:`
+block, next to `repo:` and `project:`):
+
+```yaml
+  priority_map:
+    urgent: P0
+    high: P1
+    medium: P2
+  status_map:
+    Todo: Ready
+```
+
+With these, urgent rows get P0 and status In progress, high rows P1 and Ready,
+medium rows P2 and Ready. `low` has no entry, so a low row still prints
+"option 'low' not found" and its Priority stays empty; add `low: P2` (or a P3
+option on the board) if that matters.
+
 ## Progress
 
 | Fix | Commit | Test before fix | Test after fix |
@@ -87,6 +114,7 @@ stored rows it overwrites.
 | 2 no-summary | (see git log) | `tests/test_run_meeting.py::test_no_summary_archive_all_keeps_transcripts` failed (txt moved to archive); the with-summary contrast passed | both passed; suite 37/37 |
 | 3 decoder + cache | (see git log) | export of 21fc908: `tests/test_decoder.py` collection error (no module); `tests/test_run_meeting.py` 3 failed, 4 passed (the 4 are fix-2 tests and 2 guards) | suite 51/51 |
 | 4 enroll append | (see git log) | `tests/test_enroll.py`: 7 failed of 7 | 7 passed; suite 58/58 |
+| 6 board maps | (see git log) | `tests/test_board_maps.py`: 3 failed, 1 passed (the default-board guard) | 4 passed; suite 62/62 |
 
 Fix 1 live check (2026-10-21, macOS, `/usr/bin/trash`): a scratch
 `.audio-archive/` with one file aged 30 days and one fresh file.

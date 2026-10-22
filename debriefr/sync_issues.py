@@ -39,6 +39,13 @@ Opinionated schema (don't try to customize, just match):
 * Status (optional): In Progress for urgent, Todo for the rest.
 * Iteration (optional): if present, the sync matches each item's Due date to
   its enclosing iteration and assigns it.
+
+A board whose single-select options use other names (``P0``/``P1``, ``Ready``)
+can be matched without renaming them: ``priority_map`` and ``status_map``
+under a project's ``github:`` config translate the values above to the
+board's option names, e.g. ``priority_map: {urgent: P0}`` and
+``status_map: {Todo: Ready}``. Keys match case-insensitively; values not in a
+map are sent unchanged.
 """
 from __future__ import annotations
 
@@ -63,6 +70,16 @@ PRIORITY_MAP = {"urgent": "urgent", "high": "high", "medium": "medium", "low": "
 STATUS_MAP = {"urgent": "In Progress", "high": "Todo", "medium": "Todo", "low": "Todo"}
 
 _USE_COLOR = sys.stdout.isatty()
+
+
+def map_option(mapping: dict | None, value: str | None) -> str | None:
+    """``mapping[value]`` with keys compared case-insensitively, else ``value``."""
+    if value is None:
+        return None
+    for key, target in (mapping or {}).items():
+        if str(key).lower() == value.lower():
+            return str(target)
+    return value
 
 
 def _c(code: str, text: str) -> str:
@@ -389,8 +406,15 @@ def sync_summary(
     handles: dict[str, str],
     dry_run: bool = False,
     assume_yes: bool = False,
+    priority_map: dict | None = None,
+    status_map: dict | None = None,
 ) -> None:
-    """Sync one summary's Action Items to GitHub Issues + Project v2."""
+    """Sync one summary's Action Items to GitHub Issues + Project v2.
+
+    ``priority_map`` / ``status_map`` translate debriefr's Priority values
+    (low/medium/high/urgent) and Status values (Todo/In Progress) to the
+    board's single-select option names; the default sends them unchanged.
+    """
     text = summary_path.read_text()
     rows, row_lines = parse_action_items(text)
     if not rows:
@@ -518,9 +542,9 @@ def sync_summary(
         priority = p["priority"]
         owner_handles = [o["github"] for o in p["owners"] if o["github"]]
         unresolved = [o["name"] for o in p["owners"] if not o["github"]]
-        mapped_status = STATUS_MAP.get(priority, "Ready")
+        mapped_status = map_option(status_map, STATUS_MAP.get(priority, "Ready"))
 
-        mapped_priority = PRIORITY_MAP.get(priority)
+        mapped_priority = map_option(priority_map, PRIORITY_MAP.get(priority))
 
         if p["action"] == "update":
             issue_num = p["dup_target"]["number"]
