@@ -64,6 +64,7 @@ def resolve_project(projects: dict, slug: str) -> dict:
         "default_participants": entry.get("default_participants", []),
         "cleanup": entry.get("cleanup", "archive-all"),
         "github": entry.get("github"),
+        "vocabulary": (path / entry["vocabulary"]) if entry.get("vocabulary") else None,
     }
 
 
@@ -105,6 +106,7 @@ def load_single_project(yaml_path: str | Path) -> tuple[dict, dict, dict]:
     data = load_registry(path)
     directory = path.parent
     people = data.get("collaborators") or data.get("participants") or {}
+    guests = data.get("guests") or {}
     slug = data.get("name") or directory.name
     projects = {
         slug: {
@@ -115,9 +117,10 @@ def load_single_project(yaml_path: str | Path) -> tuple[dict, dict, dict]:
             ),
             "cleanup": data.get("cleanup", "archive-all"),
             "github": data.get("github"),
+            "vocabulary": data.get("vocabulary"),
         }
     }
-    return projects, people, {}
+    return projects, people, guests
 
 
 def load_any(yaml_path: str | Path, kind: str) -> tuple[dict, dict, dict]:

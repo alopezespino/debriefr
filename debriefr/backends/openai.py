@@ -34,16 +34,20 @@ class OpenAIBackend(WhisperBackend):
         self.client = OpenAI(api_key=key)
         self.model = model or self.DEFAULT_MODEL
 
-    def transcribe(self, audio_path: Path, language: str | None = None) -> dict:
+    def transcribe(self, audio_path: Path, language: str | None = None,
+                   prompt: str | None = None) -> dict:
         if audio_path.stat().st_size <= self.MAX_SIZE:
-            return self._transcribe_single(audio_path, language, offset=0.0)
-        return self._transcribe_chunked(audio_path, language)
+            return self._transcribe_single(audio_path, language, 0.0, prompt)
+        return self._transcribe_chunked(audio_path, language, prompt)
 
-    def _transcribe_single(self, audio_path: Path, language: str | None, offset: float) -> dict:
+    def _transcribe_single(self, audio_path: Path, language: str | None, offset: float,
+                           prompt: str | None = None) -> dict:
         with open(audio_path, "rb") as f:
             kwargs = {"model": self.model, "file": f, "response_format": "verbose_json"}
             if language:
                 kwargs["language"] = language
+            if prompt:
+                kwargs["prompt"] = prompt
             resp = self.client.audio.transcriptions.create(**kwargs)
         return {
             "language": resp.language,
@@ -53,7 +57,8 @@ class OpenAIBackend(WhisperBackend):
             ],
         }
 
-    def _transcribe_chunked(self, audio_path: Path, language: str | None) -> dict:
+    def _transcribe_chunked(self, audio_path: Path, language: str | None,
+                            prompt: str | None = None) -> dict:
         import imageio_ffmpeg
         ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
         duration = _get_duration(audio_path, ffmpeg)
@@ -75,7 +80,7 @@ class OpenAIBackend(WhisperBackend):
                 ])
                 if not chunk_path.exists() or chunk_path.stat().st_size == 0:
                     continue
-                result = self._transcribe_single(chunk_path, language, offset=float(start))
+                result = self._transcribe_single(chunk_path, language, float(start), prompt)
                 segments.extend(result["segments"])
                 lang = lang or result["language"]
         return {"language": lang or language or "en", "segments": segments}

@@ -28,7 +28,8 @@ class GroqBackend(WhisperBackend):
         self.client = OpenAI(api_key=key, base_url=self.BASE_URL)
         self.model = model or self.DEFAULT_MODEL
 
-    def transcribe(self, audio_path: Path, language: str | None = None) -> dict:
+    def transcribe(self, audio_path: Path, language: str | None = None,
+                   prompt: str | None = None) -> dict:
         with open(audio_path, "rb") as f:
             kwargs = {
                 "model": self.model,
@@ -37,6 +38,8 @@ class GroqBackend(WhisperBackend):
             }
             if language:
                 kwargs["language"] = language
+            if prompt:
+                kwargs["prompt"] = prompt
             resp = self.client.audio.transcriptions.create(**kwargs)
         return {
             "language": resp.language,

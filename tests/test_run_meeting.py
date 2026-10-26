@@ -26,8 +26,9 @@ def env(tmp_path, monkeypatch):
     audio.write_bytes(b"RIFF")
     calls = {"transcribe": 0, "diarize": 0}
 
-    def fake_transcribe(wav, backend, model, language):
+    def fake_transcribe(wav, backend, model, language, prompt=None):
         calls["transcribe"] += 1
+        calls["prompt"] = prompt
         return [dict(s) for s in SEGMENTS], "en"
 
     def fake_diarize(wav, num_speakers, hf_token):
@@ -161,4 +162,4 @@ def test_resume_old_format_cache_skips_diarization(env):
     res = meeting.run_meeting(**kw, skip_summary=True, resume=str(_cache_path(env)))
 
     assert res["status"] == "complete"
-    assert env["calls"] == {"transcribe": 0, "diarize": 0}
+    assert env["calls"]["transcribe"] == 0 and env["calls"]["diarize"] == 0

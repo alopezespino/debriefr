@@ -13,8 +13,12 @@ class WhisperBackend(ABC):
     """Abstract Whisper backend."""
 
     @abstractmethod
-    def transcribe(self, audio_path: Path, language: str | None = None) -> dict:
+    def transcribe(self, audio_path: Path, language: str | None = None,
+                   prompt: str | None = None) -> dict:
         """Transcribe an audio file.
+
+        ``prompt`` is Whisper's initial prompt (a glossary of proper nouns
+        that biases spelling); backends pass it as their API names it.
 
         Returns a dict of the form::
 

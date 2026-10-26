@@ -26,12 +26,14 @@ class MLXBackend(WhisperBackend):
         self._mlx_whisper = mlx_whisper
         self.model = model or self.DEFAULT_MODEL
 
-    def transcribe(self, audio_path: Path, language: str | None = None) -> dict:
+    def transcribe(self, audio_path: Path, language: str | None = None,
+                   prompt: str | None = None) -> dict:
         result = self._mlx_whisper.transcribe(
             str(audio_path),
             path_or_hf_repo=f"mlx-community/whisper-{self.model}-mlx",
             language=language,
             word_timestamps=False,
+            initial_prompt=prompt,
         )
         return {
             "language": result["language"],

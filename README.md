@@ -162,11 +162,14 @@ transcript_dir: meetings  # relative to the project.yaml directory; default meet
 default_participants: [Alice, Bob]   # default: all collaborators
 cleanup: archive-all      # optional
 name: myproject               # optional; default: directory name
+guests:                   # optional; one-off speakers (bio, full_name)
+  Carol: {full_name: Carol A. Smith}
+vocabulary: meetings/vocabulary.txt   # optional; see "Vocabulary" below
 ```
 
 Mapping rules: the project slug comes from `name`, falling back to the
 directory basename. `collaborators` wins over `participants` if both are
-present. Any other top-level key is ignored.
+present. `guests:` and `vocabulary:` are read as described; any other top-level key is ignored.
 
 Fallback merge: if `DEBRIEFR_PROJECTS_YAML` points at a central
 `projects.yaml`, its `guests:` section, and any participant not already
@@ -176,6 +179,43 @@ are never merged across the two files.
 Passing `--project X` where `X` does not match the `project.yaml`'s slug is
 an error. In `projects.yaml` mode (a shared registry, not a per-project
 file), `--project` remains required.
+
+#### Vocabulary
+
+Whisper mishears proper nouns (names, vendors, datasets). The optional
+`vocabulary:` key (in `project.yaml`, or per project in `projects.yaml`) names a
+file, relative to the project root, with one term per line and optional
+mishearings after ` <- `, separated by ` | `; `#` starts a comment:
+
+```text
+# People, organizations, data sources
+Jordan Avery <- Jordon | Jorden
+CostBase <- Cost Base | cost bass
+Timber Index <- timber indecks
+Riverton
+```
+
+`debriefr vocab init` creates the file with this header and adds the key to
+`project.yaml`. Every person in the registry (the project's collaborators or
+participants, its guests, and the guests merged from `DEBRIEFR_PROJECTS_YAML`; key
+name and `full_name`) joins the file's terms; a file line that names a person adds
+its mishearings to that person, not a second entry. The vocabulary is used three
+ways:
+
+1. Whisper's initial prompt lists the terms, capped at about 224 tokens: entries
+   with recorded mishearings first, then project people, then other file terms,
+   then registry guests. Terms that do not fit are named in a notice.
+2. After transcription, listed mishearings are replaced in the `.txt` and
+   `.json` (whole words; a mishearing written in lowercase matches any case, one
+   with a capital matches only as written), with a count per term. The resume
+   cache keeps Whisper's text, so `--resume` after editing the file applies the
+   new entries. `debriefr vocab apply <transcript>.json` corrects an existing
+   transcript.
+3. The API summary prompt lists every term; `debriefr vocab show` prints the same
+   list for the `/debrief` skill's manual summary.
+
+A missing file prints a notice and the run continues. The file grows by hand:
+add each new misspelling a transcript shows.
 
 ### 4. Install the `/debrief` skill
 
@@ -343,6 +383,7 @@ a project directory with a `project.yaml`, `--project` can be omitted.
 | `--date YYYY-MM-DD` | Override meeting date (default: audio file mtime) |
 | `--summary-prompt PATH` | Custom summary prompt file |
 | `--summary-model MODEL` | Anthropic model for summary |
+| `--vocabulary FILE` | Vocabulary file (default: the project's `vocabulary:` key) |
 | `--no-summary` | Transcribe only; skip Claude |
 | `--skip-sampling` | Don't pause for unknown speakers |
 | `--resume CACHE` | Resume from cache after enrollment |
@@ -371,6 +412,16 @@ a project directory with a `project.yaml`, `--project` can be omitted.
 | `--title TEXT` | Title for new project (required with `--setup`) |
 | `--dry-run` | Preview without creating |
 | `--yes`, `-y` | Skip the `Proceed?` confirmation (required when stdin is not a terminal) |
+
+### `debriefr vocab`
+
+| Usage | Description |
+|------|-------------|
+| `debriefr vocab init` | Create the vocabulary file and add the `vocabulary:` key to `project.yaml` (registry mode: prints the line to add) |
+| `debriefr vocab show` | Print the merged term list and the Whisper prompt |
+| `debriefr vocab apply FILE.json` | Correct listed mishearings in a transcript `.json` and its `.txt` |
+
+Each takes `--project`, `--projects-yaml`, `--vocabulary` and `--participants` as above.
 
 ## Pick a Whisper backend
 

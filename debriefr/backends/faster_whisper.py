@@ -40,11 +40,13 @@ class FasterWhisperBackend(WhisperBackend):
             compute_type=compute_type,
         )
 
-    def transcribe(self, audio_path: Path, language: str | None = None) -> dict:
+    def transcribe(self, audio_path: Path, language: str | None = None,
+                   prompt: str | None = None) -> dict:
         segments_iter, info = self.model.transcribe(
             str(audio_path),
             language=language,
             vad_filter=True,
+            initial_prompt=prompt,
         )
         segments = [
             {"start": s.start, "end": s.end, "text": s.text}

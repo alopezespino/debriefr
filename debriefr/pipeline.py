@@ -69,14 +69,18 @@ def transcribe(
     backend: str | WhisperBackend = "auto",
     whisper_model: str | None = None,
     language: str | None = None,
+    prompt: str | None = None,
 ):
-    """Step 1: Whisper transcription. Returns (segments, detected_language)."""
+    """Step 1: Whisper transcription. Returns (segments, detected_language).
+
+    ``prompt`` is Whisper's initial prompt (see :func:`debriefr.vocabulary.whisper_prompt`).
+    """
     if isinstance(backend, str):
         kwargs = {"model": whisper_model} if whisper_model else {}
         backend = get_backend(backend, **kwargs)
 
     print(f"[1/3] transcribing with {type(backend).__name__} ...")
-    result = backend.transcribe(Path(audio), language=language)
+    result = backend.transcribe(Path(audio), language=language, prompt=prompt)
     segments = result["segments"]
     detected_lang = result["language"]
     print(f"      {len(segments)} segments, lang={detected_lang}")

@@ -49,6 +49,7 @@ from .pipeline import (
     transcribe,
     write_transcript,
 )
+from .vocabulary import Term, correct_segments, summary_block, whisper_prompt
 
 DEFAULT_SUMMARY_MODEL = "claude-opus-4-6"
 
@@ -187,6 +188,7 @@ def summarize(
     summary_prompt: str,
     participant_bios: dict[str, str] | None = None,
     meeting_date: str | None = None,
+    vocabulary_block: str | None = None,
 ) -> str:
     """Summarize a diarized transcript with Anthropic Claude. Streams for timeout safety."""
     import anthropic
@@ -208,6 +210,8 @@ def summarize(
         bios_block = "Known participants (use these bios verbatim; do not infer or override):\n"
         bios_block += "\n".join(f"- {name}: {bio}" for name, bio in participant_bios.items())
         parts.append(bios_block)
+    if vocabulary_block:
+        parts.append(vocabulary_block)
     parts.append(f"Transcript:\n\n{transcript_text}")
     user_content = "\n\n".join(parts)
 
@@ -393,12 +397,16 @@ def run_meeting(
     archive_ttl_days: int | None = None,
     archive_dir: str | Path | None = None,
     resume: str | Path | None = None,
+    vocabulary: list[Term] | None = None,
     _registry_yaml: str | None = None,
     _project_slug: str | None = None,
 ) -> dict:
     """Run the full meeting pipeline end to end.
 
-    Parameters mirror the CLI flags of ``debriefr transcribe``. Returns a dict
+    Parameters mirror the CLI flags of ``debriefr transcribe``. ``vocabulary``
+    (from :func:`debriefr.vocabulary.build_vocabulary`) feeds the Whisper
+    prompt, the mishearing corrections in the written transcript, and the
+    summary prompt. Returns a dict
     with the result status and paths of produced files::
 
         # On success:
@@ -469,6 +477,7 @@ def run_meeting(
         wav, wav_is_derived = ensure_wav(audio)
         segments, detected_lang = transcribe(
             wav, backend, whisper_model, language,
+            prompt=whisper_prompt(vocabulary) if vocabulary else None,
         )
         # Cache the transcription at once, so a failure in any later step
         # resumes without re-running Whisper.
@@ -558,6 +567,11 @@ def run_meeting(
         tentative_stem = f"{date_str}_{fallback_slug}"
         transcript_json = output_dir / f"{tentative_stem}.json"
 
+        # Corrections run on a copy, so the cache keeps Whisper's own text and
+        # a resume after editing the vocabulary file applies the new entries.
+        if vocabulary:
+            segments = [dict(s) for s in segments]
+            correct_segments(segments, vocabulary)
         aligned = align_transcript(segments, diarization, name_map)
         turns = merge_consecutive_turns(aligned)
         print(f"      merged {len(aligned)} segments -> {len(turns)} speaker turns")
@@ -609,6 +623,7 @@ def run_meeting(
                 summary_prompt,
                 participant_bios=bios_for_meeting,
                 meeting_date=date_str,
+                vocabulary_block=summary_block(vocabulary) if vocabulary else None,
             )
             reference, summary_body = extract_reference(summary_raw)
             if reference:

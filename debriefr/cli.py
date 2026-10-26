@@ -4,6 +4,7 @@ Subcommands:
   ``transcribe``   Run the full pipeline on a meeting audio file.
   ``enroll``       Enroll a speaker from one or more reference clips.
   ``sync-issues``  Sync action items from a meeting summary to GitHub.
+  ``vocab``        Create, show or apply the project's vocabulary file.
 """
 from __future__ import annotations
 
@@ -55,6 +56,9 @@ def _add_transcribe(sub):
     p.add_argument("--summary-model", default=None, help="Anthropic model for summary")
     p.add_argument("--bio", action="append", default=[], metavar="NAME=BIO",
                    help="Participant bio passed to the summarizer (repeatable)")
+    p.add_argument("--vocabulary", default=None, metavar="FILE",
+                   help="Vocabulary file of proper nouns and mishearings "
+                        "(default: the project's `vocabulary:` key)")
     p.add_argument("--no-summary", action="store_true")
     p.add_argument("--skip-sampling", action="store_true",
                    help="Skip interactive speaker sampling; use existing enrollments only")
@@ -110,6 +114,40 @@ def _add_sync_issues(sub):
     p.add_argument("--yes", "-y", action="store_true",
                    help="Skip the Proceed? confirmation (required when stdin "
                         "is not a terminal)")
+
+
+def _add_vocab(sub):
+    p = sub.add_parser("vocab", help="Create, show or apply the project's vocabulary file.")
+    p.add_argument("action", choices=["init", "show", "apply"],
+                   help="init: create the file and the `vocabulary:` key; "
+                        "show: print the merged term list and the Whisper prompt; "
+                        "apply: correct mishearings in a transcript .json and its .txt")
+    p.add_argument("transcript", nargs="?", default=None,
+                   help="Transcript .json (for apply)")
+    p.add_argument("--project", default=None, help="Project slug (registry mode)")
+    p.add_argument("--projects-yaml", default=None,
+                   help="Path to a project.yaml or projects.yaml (default: auto-discover)")
+    p.add_argument("--vocabulary", default=None, metavar="FILE",
+                   help="Vocabulary file (default: the project's `vocabulary:` key)")
+    p.add_argument("--participants", nargs="+", default=None,
+                   help="Extra names to treat as project people")
+
+
+def _vocabulary_terms(project_config: dict | None, vocab_file: str | None,
+                      participants: list[str] | None):
+    """Build the run's vocabulary: the file's terms plus registry people."""
+    from .vocabulary import build_vocabulary, load_vocabulary_file
+
+    path = vocab_file or (project_config or {}).get("vocabulary")
+    if path:
+        print(f"vocabulary: {path}")
+    file_terms = load_vocabulary_file(path)
+    people = dict((project_config or {}).get("_vocab_people") or {})
+    all_people = (project_config or {}).get("_people") or {}
+    for n in participants or []:
+        people.setdefault(n, all_people.get(n, {}))
+    guests = (project_config or {}).get("_vocab_guests") or {}
+    return build_vocabulary(file_terms, people, guests)
 
 
 def _parse_bio_args(bio_args: list[str]) -> dict[str, str]:
@@ -194,6 +232,8 @@ def _resolve_registry(project_slug: str | None, projects_yaml: str | None,
             )
 
     loaded = load_any(yaml_path, kind)
+    own_people = dict(loaded[1]) if kind == "project" else {}
+    local_guests = dict(loaded[2]) if kind == "project" else {}
 
     # Fallback merge: a project.yaml (or any registry other than the env one)
     # still gains the shared people/guests defined in $DEBRIEFR_PROJECTS_YAML.
@@ -233,6 +273,14 @@ def _resolve_registry(project_slug: str | None, projects_yaml: str | None,
     except KeyError as e:
         sys.exit(str(e))
 
+    if kind != "project":
+        own_people = {n: people.get(n, {})
+                      for n in project_config["default_participants"]}
+    # Vocabulary people: the project's own, then every guest (local and merged).
+    project_config["_vocab_people"] = own_people
+    project_config["_vocab_guests"] = {
+        n: m for n, m in {**local_guests, **guests}.items() if n not in own_people
+    }
     project_config["_yaml_path"] = yaml_path
     project_config["_people"] = people
     project_config["_kind"] = kind
@@ -300,6 +348,8 @@ def cmd_transcribe(args):
     if cleanup and not archive_base and project_config:
         archive_base = str(project_config["path"])
 
+    vocabulary = _vocabulary_terms(project_config, args.vocabulary, participants)
+
     kwargs = dict(
         audio=args.audio,
         output_dir=output_dir,
@@ -321,6 +371,7 @@ def cmd_transcribe(args):
         archive_base=archive_base,
         archive_ttl_days=args.archive_ttl_days,
         resume=args.resume,
+        vocabulary=vocabulary or None,
     )
     if args.summary_model:
         kwargs["summary_model"] = args.summary_model
@@ -439,6 +490,68 @@ def cmd_sync_issues(args):
                  status_map=gh_cfg.get("status_map"))
 
 
+def cmd_vocab(args):
+    from .registry import discover_registry
+    from .vocabulary import correct_segments, init_vocabulary, summary_block, whisper_prompt
+
+    start = Path(args.transcript).parent.resolve() if args.transcript else None
+    discover_from = _pick_discover_from([start, Path.cwd()])
+    project_config = None
+    if args.project or args.projects_yaml or (
+            discover_from and discover_registry(discover_from)):
+        project_config, _ = _resolve_registry(
+            args.project, args.projects_yaml, discover_from)
+
+    if args.action == "init":
+        if not project_config:
+            sys.exit("vocab init needs a project (project.yaml or --project).")
+        path = Path(args.vocabulary) if args.vocabulary else project_config.get("vocabulary")
+        yaml_path = Path(project_config["_yaml_path"])
+        if path is None:
+            path = project_config["output_dir"] / "vocabulary.txt"
+            rel = path.relative_to(project_config["path"])
+            if project_config["_kind"] == "project":
+                text = yaml_path.read_text()
+                sep = "" if text.endswith("\n") else "\n"
+                yaml_path.write_text(
+                    f"{text}{sep}# proper nouns and known mishearings for transcripts\n"
+                    f"vocabulary: {rel}\n")
+                print(f"added `vocabulary: {rel}` to {yaml_path}")
+            else:
+                print(f"add `vocabulary: {rel}` under `{project_config['slug']}:` "
+                      f"in {yaml_path}")
+        if init_vocabulary(path):
+            print(f"created {path}")
+        else:
+            print(f"exists, left unchanged: {path}")
+        return
+
+    terms = _vocabulary_terms(project_config, args.vocabulary, args.participants)
+
+    if args.action == "show":
+        print(summary_block(terms) or "(no terms)")
+        print()
+        print("Whisper prompt:")
+        print(whisper_prompt(terms) or "(none)")
+        return
+
+    if not args.transcript:
+        sys.exit("vocab apply needs a transcript .json")
+    import json
+    json_path = Path(args.transcript)
+    data = json.loads(json_path.read_text())
+    counts = correct_segments(data["segments"], terms)
+    if not counts:
+        print("no mishearings found; files unchanged")
+        return
+    json_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    txt_path = json_path.with_suffix(".txt")
+    with txt_path.open("w") as f:
+        for t in data["segments"]:
+            f.write(f"[{t['start']:>8.2f} - {t['end']:>8.2f}] {t['speaker']}: {t['text']}\n")
+    print(f"rewrote {json_path} and {txt_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="debriefr",
@@ -448,12 +561,14 @@ def main():
     _add_transcribe(sub)
     _add_enroll(sub)
     _add_sync_issues(sub)
+    _add_vocab(sub)
     args = parser.parse_args()
 
     dispatch = {
         "transcribe": cmd_transcribe,
         "enroll": cmd_enroll,
         "sync-issues": cmd_sync_issues,
+        "vocab": cmd_vocab,
     }
     dispatch[args.cmd](args)
 

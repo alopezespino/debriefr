@@ -57,6 +57,13 @@ Ask the user which file to process.
 If the user names participants beyond the defaults, note them for a `--participants`
 override.
 
+Vocabulary: the project's `vocabulary:` key (in `project.yaml`, or under the project's
+entry in `projects.yaml`) names a file of proper nouns and their known mishearings. The
+pipeline reads it on its own: the terms and the registry's people bias Whisper, listed
+mishearings are corrected in the `.txt` and `.json`, and the terms reach the API summary.
+If the key is missing, offer `debriefr vocab init` (run from the project directory; in
+registry mode it prints the line to add). A missing file only prints a notice.
+
 ## Step 2: Run the pipeline
 
 Registry mode:
@@ -131,6 +138,14 @@ do it manually:
    Known participants (use these bios verbatim; do not infer or override):
    - Name: bio text
    ```
+   Print the vocabulary (file terms plus registry people) and use it as the spelling list:
+   ```bash
+   debriefr vocab show [--project <slug>]
+   ```
+   Check proper nouns against the project's vocabulary file only; do not sweep the
+   repository, Depot or other folders for spellings. Add any new misspelling found to that
+   file (`Correct <- misheard`), then run `debriefr vocab apply <stem>.json` to correct the
+   `.json` and `.txt` before writing the summary.
 4. Generate the summary following the prompt exactly. First line: `reference: <slug>`.
    Match transcript language.
 5. Strip the `reference:` line and write `<stem>.md` next to the transcript.

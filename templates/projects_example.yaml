@@ -38,6 +38,7 @@ ProjectAlpha:
     - YourName
     - Collaborator
   cleanup: archive-all                  # gitignore | archive-all | archive-audio
+  vocabulary: meetings/vocabulary.txt   # optional; proper nouns + mishearings, relative to `path`
   github:                               # omit entirely for non-git projects
     repo: owner/project-alpha           # for `sync-issues --repo`
     project: 42                         # Project v2 number (from `sync-issues --setup`)

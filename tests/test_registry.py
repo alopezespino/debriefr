@@ -84,8 +84,9 @@ def test_defaults_and_extra_keys_ignored(tmp_path, write_yaml_file):
     assert entry["cleanup"] == "archive-all"
     assert sorted(entry["default_participants"]) == ["Alice", "Bob"]
     assert entry["github"] is None
+    assert entry["vocabulary"] is None
     assert set(entry) == {"path", "transcript_dir", "default_participants",
-                          "cleanup", "github"}
+                          "cleanup", "github", "vocabulary"}
 
 
 def test_resolve_project_round_trip(project_tree):
