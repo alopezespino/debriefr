@@ -65,6 +65,10 @@ def resolve_project(projects: dict, slug: str) -> dict:
         "cleanup": entry.get("cleanup", "archive-all"),
         "github": entry.get("github"),
         "vocabulary": (path / entry["vocabulary"]) if entry.get("vocabulary") else None,
+        "audio_archive": (
+            path / Path(entry["audio_archive"]).expanduser()
+            if entry.get("audio_archive") else None
+        ),
     }
 
 
@@ -118,6 +122,7 @@ def load_single_project(yaml_path: str | Path) -> tuple[dict, dict, dict]:
             "cleanup": data.get("cleanup", "archive-all"),
             "github": data.get("github"),
             "vocabulary": data.get("vocabulary"),
+            "audio_archive": data.get("audio_archive"),
         }
     }
     return projects, people, guests

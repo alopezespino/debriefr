@@ -161,6 +161,7 @@ github:
 transcript_dir: meetings  # relative to the project.yaml directory; default meetings
 default_participants: [Alice, Bob]   # default: all collaborators
 cleanup: archive-all      # optional
+audio_archive: ~/Archive/myproject   # optional; see "Cleanup modes"
 name: myproject               # optional; default: directory name
 guests:                   # optional; one-off speakers (bio, full_name)
   Carol: {full_name: Carol A. Smith}
@@ -304,6 +305,19 @@ After processing, debriefr cleans up intermediates. Set the mode with `--cleanup
 | `gitignore` | Keeps everything in place. Adds patterns to `.gitignore` (once per project). | All files locally, nothing in git. |
 
 Without `--project` and without `--cleanup`, no cleanup is performed.
+
+By default archived files go to `<project>/.audio-archive/`. To keep them
+elsewhere (for example outside a synced folder), set `audio_archive:` in the
+project's `project.yaml` or its `projects.yaml` entry:
+
+```yaml
+audio_archive: ~/Archive/myproject   # ~ is expanded; relative = from the project dir
+```
+
+Cleanup then moves files into exactly that folder (no `.audio-archive`
+suffix is added), creating it with mode 700 if it is missing, and
+`--archive-ttl-days` prunes that same folder. Without the key, behaviour is
+unchanged.
 
 Archived files are kept indefinitely. To prune, pass `--archive-ttl-days N`
 explicitly: files directly in `.audio-archive/` that are older than N days are

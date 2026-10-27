@@ -306,11 +306,21 @@ def _apply_cleanup(
     registry_yaml: str | None = None,
     project_slug: str | None = None,
     keep_transcripts: bool = False,
+    audio_archive: Path | None = None,
 ) -> None:
     """Post-run cleanup. ``keep_transcripts`` (set when no summary was written)
     leaves the ``.txt``/``.json`` in ``output_dir`` under ``archive-all``: they
-    are the input for the summary still to be written."""
-    archive_dir = (archive_base or output_dir.parent) / ".audio-archive"
+    are the input for the summary still to be written. ``audio_archive``
+    (the project's ``audio_archive:`` setting) is the exact archive folder;
+    without it files go to ``<archive_base>/.audio-archive``."""
+    if audio_archive is not None:
+        archive_dir = Path(audio_archive).expanduser()
+    else:
+        archive_dir = (archive_base or output_dir.parent) / ".audio-archive"
+    if (audio_archive is not None and cleanup in ("archive-all", "archive-audio")
+            and not archive_dir.exists()):
+        archive_dir.mkdir(parents=True, mode=0o700)
+        archive_dir.chmod(0o700)
 
     if cleanup == "archive-all":
         to_archive = [original_audio]
@@ -342,6 +352,7 @@ def _apply_cleanup(
                 "archive-all", original_audio, transcript_json, transcript_txt,
                 output_dir, archive_base, archive_ttl_days,
                 keep_transcripts=keep_transcripts,
+                audio_archive=audio_archive,
             )
             return
 
@@ -394,6 +405,7 @@ def run_meeting(
     slug: str | None = None,
     cleanup: str | None = None,
     archive_base: str | Path | None = None,
+    audio_archive: str | Path | None = None,
     archive_ttl_days: int | None = None,
     archive_dir: str | Path | None = None,
     resume: str | Path | None = None,
@@ -664,6 +676,7 @@ def run_meeting(
             archive_ttl_days,
             _registry_yaml, _project_slug,
             keep_transcripts=summary_path is None,
+            audio_archive=Path(audio_archive) if audio_archive else None,
         )
 
     return {

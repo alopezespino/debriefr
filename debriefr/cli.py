@@ -347,6 +347,11 @@ def cmd_transcribe(args):
 
     if cleanup and not archive_base and project_config:
         archive_base = str(project_config["path"])
+    # Per-project `audio_archive:` names the exact archive folder; the
+    # deprecated --archive-dir flag still wins when given.
+    audio_archive = None
+    if cleanup and not args.archive_dir and project_config:
+        audio_archive = project_config.get("audio_archive")
 
     vocabulary = _vocabulary_terms(project_config, args.vocabulary, participants)
 
@@ -369,6 +374,7 @@ def cmd_transcribe(args):
         slug=args.slug,
         cleanup=cleanup,
         archive_base=archive_base,
+        audio_archive=str(audio_archive) if audio_archive else None,
         archive_ttl_days=args.archive_ttl_days,
         resume=args.resume,
         vocabulary=vocabulary or None,
