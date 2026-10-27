@@ -60,7 +60,7 @@ debriefr needs three services. Each step below shows a one-shot `export` and how
 #### HuggingFace (required -- diarization models are license-gated)
 
 1. Sign up at <https://huggingface.co/>, create a **Read** token at [Settings > Access Tokens](https://huggingface.co/settings/tokens).
-2. Log in: `hf auth login` (paste your token).
+2. Store the token. debriefr looks for it in this order: the `HF_TOKEN` environment variable, then the OS secret store item `hf_token` (macOS: `security add-generic-password -a "$USER" -s hf_token -w`, which prompts for the value; Linux: `secret-tool store --label=hf_token service hf_token account "$USER"`), then the file saved by `hf auth login`. The secret store keeps the token out of files.
 3. Accept licenses for [speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1), [segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0), and [wespeaker-voxceleb-resnet34-LM](https://huggingface.co/pyannote/wespeaker-voxceleb-resnet34-LM).
 
 #### Whisper backend (cloud backends only)

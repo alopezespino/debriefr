@@ -20,6 +20,8 @@ import numpy as np
 import torch
 from pyannote.audio import Inference, Model
 
+from .pipeline import hf_auth
+
 
 def _pick_device() -> torch.device:
     if torch.cuda.is_available():
@@ -43,13 +45,13 @@ def enroll_speaker(
     (a clip whose embedding is already stored is skipped); ``replace=True``
     overwrites it instead. Returns the path to the saved file.
     """
-    hf_auth = hf_token if hf_token else True
+    auth = hf_auth(hf_token)
     device = _pick_device()
     print(f"device: {device}")
 
     model = Model.from_pretrained(
         "pyannote/wespeaker-voxceleb-resnet34-LM",
-        use_auth_token=hf_auth,
+        use_auth_token=auth,
     )
     inference = Inference(model, window="whole", device=device)
 

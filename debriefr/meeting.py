@@ -37,6 +37,7 @@ from pathlib import Path
 from .backends import WhisperBackend
 from .decoder import audio_decoder_error, decoder_failure_message
 from .pipeline import (
+    _secret_store_get,
     align_transcript,
     deserialize_diarization,
     diarize,
@@ -52,33 +53,6 @@ from .pipeline import (
 from .vocabulary import Term, correct_segments, summary_block, whisper_prompt
 
 DEFAULT_SUMMARY_MODEL = "claude-opus-4-6"
-
-
-def _secret_store_get(service: str) -> str | None:
-    """Try OS secret store: macOS Keychain, then Linux secret-tool."""
-    user = os.environ.get("USER", "")
-    # macOS Keychain
-    try:
-        r = subprocess.run(
-            ["security", "find-generic-password", "-a", user,
-             "-s", service, "-w"],
-            capture_output=True, text=True,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
-    except FileNotFoundError:
-        pass
-    # Linux secret-tool (libsecret)
-    try:
-        r = subprocess.run(
-            ["secret-tool", "lookup", "service", service, "account", user],
-            capture_output=True, text=True,
-        )
-        if r.returncode == 0 and r.stdout.strip():
-            return r.stdout.strip()
-    except FileNotFoundError:
-        pass
-    return None
 
 
 def slugify(text: str) -> str:

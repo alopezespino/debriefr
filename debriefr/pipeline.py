@@ -24,6 +24,8 @@ Prereqs:
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -33,6 +35,41 @@ from pyannote.audio import Inference, Model, Pipeline
 from pyannote.core import Annotation, Segment
 
 from .backends import WhisperBackend, get_backend
+
+
+def _secret_store_get(service: str) -> str | None:
+    """Try OS secret store: macOS Keychain, then Linux secret-tool."""
+    user = os.environ.get("USER", "")
+    # macOS Keychain
+    try:
+        r = subprocess.run(
+            ["security", "find-generic-password", "-a", user,
+             "-s", service, "-w"],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except FileNotFoundError:
+        pass
+    # Linux secret-tool (libsecret)
+    try:
+        r = subprocess.run(
+            ["secret-tool", "lookup", "service", service, "account", user],
+            capture_output=True, text=True,
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            return r.stdout.strip()
+    except FileNotFoundError:
+        pass
+    return None
+
+
+def hf_auth(hf_token: str | None = None):
+    """Hugging Face credential for pyannote: the given token, else ``HF_TOKEN``,
+    else the OS secret store item ``hf_token``, else True (the token saved by
+    ``hf auth login``). The token is kept in memory only."""
+    return (hf_token or os.environ.get("HF_TOKEN")
+            or _secret_store_get("hf_token") or True)
 
 
 def _pick_device() -> torch.device:
@@ -94,12 +131,12 @@ def diarize(
     device: torch.device | None = None,
 ):
     """Step 2: Speaker diarization. Returns (diarization_annotation, device)."""
-    hf_auth = hf_token if hf_token else True
+    auth = hf_auth(hf_token)
     if device is None:
         device = _pick_device()
     print(f"[2/3] diarization ... (device: {device})")
     diar = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-3.1", token=hf_auth,
+        "pyannote/speaker-diarization-3.1", token=auth,
     )
     diar.to(device)
     diar_kwargs = {"num_speakers": num_speakers} if num_speakers else {}
@@ -116,11 +153,11 @@ def diarize(
 
 def init_embedder(device: torch.device | None = None, hf_token: str | None = None):
     """Load the speaker embedding model. Returns an Inference object."""
-    hf_auth = hf_token if hf_token else True
+    auth = hf_auth(hf_token)
     if device is None:
         device = _pick_device()
     embed_model = Model.from_pretrained(
-        "pyannote/wespeaker-voxceleb-resnet34-LM", token=hf_auth,
+        "pyannote/wespeaker-voxceleb-resnet34-LM", token=auth,
     )
     return Inference(embed_model, window="whole", device=device)
 
