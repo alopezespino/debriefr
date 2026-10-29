@@ -91,3 +91,20 @@ def test_tty_prompt_no_answer_aborts(monkeypatch, summary_path, capsys):
     assert result is None
     assert called["hit"] is False
     assert "Aborted." in capsys.readouterr().out
+
+
+def test_board_owner_is_repo_owner_not_logged_in_user(monkeypatch, summary_path):
+    """An organization's board is looked up under the organization."""
+    _patch_pre_prompt(monkeypatch)  # logged-in user is "octocat"
+    seen = {}
+
+    def capture(owner, number):
+        seen["owner"] = owner
+        raise SentinelError("reached post-prompt code")
+    monkeypatch.setattr(sync_issues, "fetch_project_metadata", capture)
+
+    with pytest.raises(SentinelError):
+        sync_issues.sync_summary(
+            summary_path, "some-org/repo", 3, {}, assume_yes=True,
+        )
+    assert seen["owner"] == "some-org"

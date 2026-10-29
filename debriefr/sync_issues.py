@@ -435,7 +435,9 @@ def sync_summary(
         else:
             to_sync.append((row, line))
 
-    owner = current_github_user()
+    # The board belongs to the repo's owner (a user or an organization), not
+    # necessarily to the logged-in user.
+    owner = repo.split("/", 1)[0]
 
     print(f"Action items in {summary_path.name}: {len(rows)} total "
           f"({len(to_sync)} new, {len(already)} already synced, {len(done_rows)} done)")
