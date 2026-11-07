@@ -63,6 +63,9 @@ SYNC_MARKER_RE = re.compile(r"<!--\s*synced:#(\d+)\s*-->")
 # for the record but is never turned into a GitHub issue. On sync it gets a
 # ``<!-- nosync -->`` marker so subsequent runs skip it (mirrors ``synced:#N``).
 DONE_PRIORITY = "done"
+
+# Upper bound on board items read by fetch_project_items (gh's default is 30).
+ITEM_LIST_LIMIT = 5000
 NOSYNC_MARKER = " <!-- nosync -->"
 NOSYNC_MARKER_RE = re.compile(r"<!--\s*nosync\s*-->")
 
@@ -364,15 +367,26 @@ def set_field_date(item_id, project_id, field, iso_date):
        "--field-id", field["id"], "--date", iso_date)
 
 
-def fetch_project_items(owner: str, number: int) -> dict[int, str]:
+def fetch_project_items(owner: str, number: int,
+                        repo: str | None = None) -> dict[int, str]:
+    """Map issue number -> board item id.
+
+    Reads every item (gh lists 30 by default) and, when ``repo`` is given,
+    keeps only that repo's issues: a board can hold issues from several
+    repos, whose numbers collide.
+    """
     raw = sh("gh", "project", "item-list", str(number),
-             "--owner", owner, "--format", "json", json_out=True)
+             "--owner", owner, "--limit", str(ITEM_LIST_LIMIT),
+             "--format", "json", json_out=True)
     mapping = {}
     for item in raw.get("items", []):
-        c = item.get("content", {})
+        c = item.get("content", {}) or {}
         num = c.get("number")
-        if num:
-            mapping[num] = item["id"]
+        if not num:
+            continue
+        if repo and (c.get("repository") or "").lower() != repo.lower():
+            continue
+        mapping[num] = item["id"]
     return mapping
 
 
@@ -408,8 +422,12 @@ def sync_summary(
     assume_yes: bool = False,
     priority_map: dict | None = None,
     status_map: dict | None = None,
+    project_owner: str | None = None,
 ) -> None:
     """Sync one summary's Action Items to GitHub Issues + Project v2.
+
+    ``project_owner`` is the account (user or organization) that owns the
+    board; when None it is the repo's owner.
 
     ``priority_map`` / ``status_map`` translate debriefr's Priority values
     (low/medium/high/urgent) and Status values (Todo/In Progress) to the
@@ -435,9 +453,10 @@ def sync_summary(
         else:
             to_sync.append((row, line))
 
-    # The board belongs to the repo's owner (a user or an organization), not
-    # necessarily to the logged-in user.
-    owner = repo.split("/", 1)[0]
+    # The board belongs to project_owner when given (a board kept under
+    # another account than the repo's), else to the repo's owner (a user or
+    # an organization), not necessarily to the logged-in user.
+    owner = project_owner or repo.split("/", 1)[0]
 
     print(f"Action items in {summary_path.name}: {len(rows)} total "
           f"({len(to_sync)} new, {len(already)} already synced, {len(done_rows)} done)")
@@ -532,7 +551,7 @@ def sync_summary(
     status_field = fields.get("status")
     iteration_field = fields.get("iteration")
     iterations = fetch_iterations(owner, project_number) if iteration_field else []
-    item_map = fetch_project_items(owner, project_number)
+    item_map = fetch_project_items(owner, project_number, repo)
 
     new_text = text
     for p in plan:

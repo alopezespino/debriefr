@@ -108,3 +108,39 @@ def test_board_owner_is_repo_owner_not_logged_in_user(monkeypatch, summary_path)
             summary_path, "some-org/repo", 3, {}, assume_yes=True,
         )
     assert seen["owner"] == "some-org"
+
+
+def test_project_owner_overrides_repo_owner(monkeypatch, summary_path):
+    """A board kept under another account is looked up under that account."""
+    _patch_pre_prompt(monkeypatch)
+    seen = {}
+
+    def capture(owner, number):
+        seen["owner"] = owner
+        raise SentinelError("reached post-prompt code")
+    monkeypatch.setattr(sync_issues, "fetch_project_metadata", capture)
+
+    with pytest.raises(SentinelError):
+        sync_issues.sync_summary(
+            summary_path, "repo-owner/repo", 3, {}, assume_yes=True,
+            project_owner="board-owner",
+        )
+    assert seen["owner"] == "board-owner"
+
+
+def test_fetch_project_items_reads_all_and_filters_repo(monkeypatch):
+    """Items past gh's default 30 are read, and other repos' issues skipped."""
+    seen = {}
+
+    def fake_sh(*args, **kw):
+        seen["args"] = args
+        return {"items": [
+            {"id": "A", "content": {"number": 25, "repository": "org/one"}},
+            {"id": "B", "content": {"number": 25, "repository": "org/two"}},
+            {"id": "C", "content": {}},
+        ]}
+    monkeypatch.setattr(sync_issues, "sh", fake_sh)
+
+    got = sync_issues.fetch_project_items("org", 3, "org/one")
+    assert got == {25: "A"}
+    assert "--limit" in seen["args"]

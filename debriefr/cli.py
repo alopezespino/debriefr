@@ -102,6 +102,9 @@ def _add_sync_issues(sub):
     p.add_argument("--repo", help="GitHub repo in owner/name form (required for sync)")
     p.add_argument("--gh-project", type=int, default=None,
                    help="GitHub Project v2 number (required for sync)")
+    p.add_argument("--gh-project-owner", default=None, metavar="OWNER",
+                   help="Account that owns the Project board, when it is not "
+                        "the repo's owner (or set github.project_owner)")
     p.add_argument("--setup", action="store_true",
                    help="Create a new GitHub Project with Priority + Due fields")
     p.add_argument("--link", type=int, metavar="NUMBER",
@@ -493,7 +496,8 @@ def cmd_sync_issues(args):
     sync_summary(summary_path, repo, gh_project, handles, dry_run=args.dry_run,
                  assume_yes=args.yes,
                  priority_map=gh_cfg.get("priority_map"),
-                 status_map=gh_cfg.get("status_map"))
+                 status_map=gh_cfg.get("status_map"),
+                 project_owner=args.gh_project_owner or gh_cfg.get("project_owner"))
 
 
 def cmd_vocab(args):

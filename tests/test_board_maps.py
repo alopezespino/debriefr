@@ -43,7 +43,7 @@ def board(monkeypatch, tmp_path):
     monkeypatch.setattr(sync_issues, "fetch_project_metadata",
                         lambda owner, number: ("PID", state["fields"]))
     monkeypatch.setattr(sync_issues, "fetch_iterations", lambda owner, number: [])
-    monkeypatch.setattr(sync_issues, "fetch_project_items", lambda owner, number: {})
+    monkeypatch.setattr(sync_issues, "fetch_project_items", lambda owner, number, repo=None: {})
 
     def fake_sh(*args, check=True, json_out=False):
         if args[:3] == ("gh", "issue", "create"):

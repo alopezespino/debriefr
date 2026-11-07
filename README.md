@@ -158,6 +158,7 @@ collaborators:            # or participants:
 github:
   repo: owner/repo
   project: 12             # Project v2 number or null
+  project_owner: alice    # optional: board's owner when not the repo's owner
 transcript_dir: meetings  # relative to the project.yaml directory; default meetings
 default_participants: [Alice, Bob]   # default: all collaborators
 cleanup: archive-all      # optional
