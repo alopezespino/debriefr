@@ -15,13 +15,16 @@ gh auth login                # only if you want issue sync
 ## 2. Enroll two speakers
 
 ```bash
-mkdir -p samples
+mkdir -p admin/audio_samples
 # Trim each clip to >= 20-30s of single-voice audio (Audacity is handy).
-ffmpeg -ss 00:00:30 -to 00:01:00 -i meeting.m4a -ac 1 -ar 16000 samples/alice.wav
-ffmpeg -ss 00:02:00 -to 00:02:45 -i meeting.m4a -ac 1 -ar 16000 samples/bob.wav
+ffmpeg -ss 00:00:30 -to 00:01:00 -i meeting.m4a -ac 1 -ar 16000 \
+  admin/audio_samples/alice.wav
+ffmpeg -ss 00:02:00 -to 00:02:45 -i meeting.m4a -ac 1 -ar 16000 \
+  admin/audio_samples/bob.wav
 
-debriefr enroll --name Alice --audio samples/alice.wav
-debriefr enroll --name Bob   --audio samples/bob.wav
+# Embeddings go to admin/enrollments/
+debriefr enroll --name Alice --audio admin/audio_samples/alice.wav
+debriefr enroll --name Bob   --audio admin/audio_samples/bob.wav
 ```
 
 ## 3. Transcribe a meeting

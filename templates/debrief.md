@@ -93,15 +93,17 @@ This runs transcription, diarization, and speaker identification. Monitor the ou
 ## Step 3: Handle auto-sampling (if needed)
 
 If the pipeline exits with `status: needs_sampling`, some speakers aren't enrolled. The
-output lists extracted clips like `samples/SPEAKER_XX.wav`.
+output lists extracted clips like `admin/audio_samples/SPEAKER_XX.wav` (in a repo not yet
+moved to `admin/`, debriefr prints a notice and uses the old `samples/`; use the path the
+output prints).
 
 Help the user identify each clip:
-1. Play each clip: `afplay samples/SPEAKER_XX.wav` (macOS) or `aplay` (Linux).
+1. Play each clip: `afplay admin/audio_samples/SPEAKER_XX.wav` (macOS) or `aplay` (Linux).
 2. Ask the user who each speaker is.
 3. For each identified speaker, rename and enroll:
    ```bash
-   mv samples/SPEAKER_XX.wav samples/<Name>.wav
-   <debriefr> enroll --name <Name> --audio samples/<Name>.wav
+   mv admin/audio_samples/SPEAKER_XX.wav admin/audio_samples/<Name>.wav
+   <debriefr> enroll --name <Name> --audio admin/audio_samples/<Name>.wav
    ```
    Enrolling an existing name appends the clip to the stored enrollment. Use `--replace`
    only if the user wants to discard the stored clips.

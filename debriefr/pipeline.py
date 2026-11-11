@@ -349,7 +349,7 @@ def merge_consecutive_turns(aligned: list[dict]) -> list[dict]:
 def run_pipeline(
     audio: str | Path,
     out: str | Path,
-    enrollments_dir: str | Path = "enrollments",
+    enrollments_dir: str | Path | None = None,
     backend: str | WhisperBackend = "auto",
     whisper_model: str | None = None,
     language: str | None = None,
@@ -366,8 +366,12 @@ def run_pipeline(
     :func:`merge_consecutive_turns`, and :func:`write_transcript` directly.
 
     Returns the output dict. The sibling ``.txt`` is written next to ``out``
-    with the same stem.
+    with the same stem. ``enrollments_dir=None`` resolves the folder with
+    :func:`debriefr.voice_dirs.resolve_voice_dirs` (``admin/enrollments``).
     """
+    if enrollments_dir is None:
+        from .voice_dirs import resolve_voice_dirs
+        enrollments_dir, _ = resolve_voice_dirs(samples=False)
     segments, detected_lang = transcribe(audio, backend, whisper_model, language)
     diarization, device = diarize(audio, num_speakers, hf_token)
 

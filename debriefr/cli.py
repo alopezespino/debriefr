@@ -33,10 +33,14 @@ def _add_transcribe(sub):
                         "(resolved from registry when --project is used)")
     p.add_argument("--participants", nargs="+", default=None,
                    help="Space-separated list of enrolled speaker names")
-    p.add_argument("--enrollments-dir", default="enrollments",
-                   help="Directory containing enrolled {name}.npy files (default: ./enrollments)")
-    p.add_argument("--samples-dir", default="samples",
-                   help="Directory for auto-sampled speaker clips (default: ./samples)")
+    p.add_argument("--enrollments-dir", default=None,
+                   help="Directory containing enrolled {name}.npy files "
+                        "(default: ./admin/enrollments; the old ./enrollments "
+                        "is used, with a notice, while it exists alone)")
+    p.add_argument("--samples-dir", default=None,
+                   help="Directory for auto-sampled speaker clips "
+                        "(default: ./admin/audio_samples; the old ./samples "
+                        "is used, with a notice, while it exists alone)")
     p.add_argument("--backend", default="auto",
                    choices=["auto", "groq", "openai", "mlx", "faster-whisper"],
                    help="Whisper backend (default: auto)")
@@ -80,8 +84,10 @@ def _add_enroll(sub):
     p.add_argument("--name", required=True)
     p.add_argument("--audio", required=True, nargs="+",
                    help="One or more audio files (wav/flac)")
-    p.add_argument("--out-dir", default="enrollments",
-                   help="Directory to save embeddings (default: ./enrollments)")
+    p.add_argument("--out-dir", default=None,
+                   help="Directory to save embeddings (default: "
+                        "./admin/enrollments; the old ./enrollments is used, "
+                        "with a notice, while it exists alone)")
     p.add_argument("--replace", action="store_true",
                    help="Overwrite an existing enrollment instead of appending "
                         "the new clips to it")
@@ -358,12 +364,16 @@ def cmd_transcribe(args):
 
     vocabulary = _vocabulary_terms(project_config, args.vocabulary, participants)
 
+    from .voice_dirs import resolve_voice_dirs
+    enrollments_dir, samples_dir = resolve_voice_dirs(
+        args.enrollments_dir, args.samples_dir)
+
     kwargs = dict(
         audio=args.audio,
         output_dir=output_dir,
         participants=participants,
-        enrollments_dir=args.enrollments_dir,
-        samples_dir=args.samples_dir,
+        enrollments_dir=str(enrollments_dir),
+        samples_dir=str(samples_dir),
         backend=args.backend,
         whisper_model=args.whisper_model,
         language=args.language,
@@ -408,7 +418,11 @@ def cmd_transcribe(args):
             print(f"\n  {len(result['no_clip'])} cluster(s) with no clean segments "
                   f"(likely noise): {result['no_clip']}")
         print(f"\nLabel each unknown speaker, then enroll and resume:")
-        print(f"  debriefr enroll --name <Name> --audio samples/<SPEAKER>.wav")
+        enroll_cmd = (f"  debriefr enroll --name <Name> "
+                      f"--audio {samples_dir}/<SPEAKER>.wav")
+        if args.enrollments_dir is not None:
+            enroll_cmd += f" --out-dir {enrollments_dir}"
+        print(enroll_cmd)
         resume_cmd = f"  debriefr transcribe --resume {result['cache_path']}"
         if project_config:
             resume_cmd += f" --project {project_config['slug']}"
@@ -422,8 +436,10 @@ def cmd_transcribe(args):
 def cmd_enroll(args):
     from .decoder import ensure_audio_decoder
     from .enroll import enroll_speaker
+    from .voice_dirs import resolve_voice_dirs
     ensure_audio_decoder()
-    enroll_speaker(args.name, args.audio, out_dir=args.out_dir,
+    out_dir, _ = resolve_voice_dirs(args.out_dir, samples=False)
+    enroll_speaker(args.name, args.audio, out_dir=out_dir,
                    replace=args.replace)
 
 

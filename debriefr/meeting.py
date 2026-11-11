@@ -128,7 +128,7 @@ def collect_enrollments(enrollments_dir: Path, participants: list[str]) -> tuple
 
 
 def rename_matched_samples(name_map: dict[str, str], samples_dir: Path) -> None:
-    """Rename ``samples/SPEAKER_XX.wav`` to ``samples/<Name>_autoN.wav`` for matched clusters."""
+    """Rename ``<samples_dir>/SPEAKER_XX.wav`` to ``<samples_dir>/<Name>_autoN.wav`` for matched clusters."""
     for cluster, name in name_map.items():
         if name.startswith("unknown_"):
             continue
@@ -361,8 +361,8 @@ def run_meeting(
     audio: str | Path | None = None,
     output_dir: str | Path = ".",
     participants: list[str] | None = None,
-    enrollments_dir: str | Path = "enrollments",
-    samples_dir: str | Path = "samples",
+    enrollments_dir: str | Path | None = None,
+    samples_dir: str | Path | None = None,
     backend: str | WhisperBackend = "auto",
     whisper_model: str | None = None,
     language: str | None = None,
@@ -415,8 +415,10 @@ def run_meeting(
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    enrollments_dir = Path(enrollments_dir)
-    samples_dir = Path(samples_dir)
+    # None resolves admin/enrollments and admin/audio_samples (old top-level
+    # folders while they exist alone); see debriefr.voice_dirs.
+    from .voice_dirs import resolve_voice_dirs
+    enrollments_dir, samples_dir = resolve_voice_dirs(enrollments_dir, samples_dir)
 
     # ── Resume path: load cached transcription (+ diarization if cached) ──
     if resume:

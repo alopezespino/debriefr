@@ -34,7 +34,7 @@ def _pick_device() -> torch.device:
 def enroll_speaker(
     name: str,
     audio_paths: list[str | Path],
-    out_dir: str | Path = "enrollments",
+    out_dir: str | Path | None = None,
     hf_token: str | None = None,
     replace: bool = False,
 ) -> Path:
@@ -44,7 +44,12 @@ def enroll_speaker(
     L2-normalized. If the file exists, the new rows are appended to it
     (a clip whose embedding is already stored is skipped); ``replace=True``
     overwrites it instead. Returns the path to the saved file.
+    ``out_dir=None`` resolves the folder with
+    :func:`debriefr.voice_dirs.resolve_voice_dirs` (``admin/enrollments``).
     """
+    if out_dir is None:
+        from .voice_dirs import resolve_voice_dirs
+        out_dir, _ = resolve_voice_dirs(samples=False)
     auth = hf_auth(hf_token)
     device = _pick_device()
     print(f"device: {device}")

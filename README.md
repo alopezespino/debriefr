@@ -253,23 +253,34 @@ debriefr transcribe recording.m4a --project ProjectAlpha
 
 ## Speaker enrollment
 
+### Voice folders
+
+debriefr keeps two folders in the project, both relative to the directory you run it from:
+
+- `admin/enrollments/`: one speaker embedding per person, `<Name>.npy`.
+- `admin/audio_samples/`: voice clips (`.wav`), including the clips auto-sampling extracts.
+
+When `--enrollments-dir`, `--samples-dir` (transcribe) or `--out-dir` (enroll) is not given, each folder is resolved on its own: the folder under `admin/` when it exists; otherwise the old top-level `enrollments/` or `samples/` when it exists, with one notice naming the new place (move it with `mkdir -p admin && mv enrollments admin/enrollments && mv samples admin/audio_samples`); otherwise the folder under `admin/` is created. An explicit flag always wins, so a run that needs enrollments kept in another project passes that folder: `--enrollments-dir /path/to/other/admin/enrollments` (and the same path as `--out-dir` when enrolling into it).
+
+Run debriefr from the project root (where `project.yaml` lives): the folders are resolved against the working directory, not against the project path in the registry.
+
 ### Auto-sampling (recommended)
 
 When you run `debriefr transcribe` and some participants aren't enrolled, the pipeline automatically:
 
 1. Runs transcription and diarization to detect speaker clusters.
 2. Extracts ~45 s of clean speech per unknown cluster (filtering out short interjections and cross-talk).
-3. Saves clips to `samples/SPEAKER_XX.wav`.
+3. Saves clips to `admin/audio_samples/SPEAKER_XX.wav`.
 4. Saves a cache file so the expensive transcription + diarization don't re-run.
 5. Exits with instructions for labeling.
 
 After reviewing the clips (listen with `afplay` on macOS or `aplay` on Linux), rename, enroll, and resume:
 
 ```bash
-afplay samples/SPEAKER_02.wav
+afplay admin/audio_samples/SPEAKER_02.wav
 
-mv samples/SPEAKER_02.wav samples/Alice.wav
-debriefr enroll --name Alice --audio samples/Alice.wav
+mv admin/audio_samples/SPEAKER_02.wav admin/audio_samples/Alice.wav
+debriefr enroll --name Alice --audio admin/audio_samples/Alice.wav
 
 debriefr transcribe --resume ./meetings/2026-04-17_meeting.cache.json \
   --project ProjectAlpha
@@ -287,13 +298,14 @@ As your enrollment library grows, the pipeline matches more speakers automatical
 Make a clean reference clip per person: >= 20-30 s of single-voice audio with no overlap. Save as 16 kHz mono wav.
 
 ```bash
-debriefr enroll --name Alice --audio samples/alice.wav
-debriefr enroll --name Bob   --audio samples/bob_1.wav samples/bob_2.wav
+debriefr enroll --name Alice --audio admin/audio_samples/alice.wav
+debriefr enroll --name Bob   --audio admin/audio_samples/bob_1.wav \
+  admin/audio_samples/bob_2.wav
 ```
 
 Multiple clips per person are stored individually. At identification time, each cluster is scored against every clip and the best cosine match wins -- so contamination in one clip doesn't block a match on another.
 
-Enrolling a name that already has an `enrollments/<Name>.npy` appends the new clips to it; a clip whose embedding is already stored is skipped. Pass `--replace` to overwrite the stored enrollment instead.
+Enrolling a name that already has an `admin/enrollments/<Name>.npy` appends the new clips to it; a clip whose embedding is already stored is skipped. Pass `--replace` to overwrite the stored enrollment instead.
 
 ## Cleanup modes
 
@@ -400,6 +412,8 @@ a project directory with a `project.yaml`, `--project` can be omitted.
 | `--summary-model MODEL` | Anthropic model for summary |
 | `--vocabulary FILE` | Vocabulary file (default: the project's `vocabulary:` key) |
 | `--no-summary` | Transcribe only; skip Claude |
+| `--enrollments-dir DIR` | Enrolled `<Name>.npy` files (default: `./admin/enrollments`; see Voice folders) |
+| `--samples-dir DIR` | Auto-sampled clips (default: `./admin/audio_samples`; see Voice folders) |
 | `--skip-sampling` | Don't pause for unknown speakers |
 | `--resume CACHE` | Resume from cache after enrollment |
 | `--cleanup MODE` | `gitignore`, `archive-all`, or `archive-audio` |
@@ -411,7 +425,7 @@ a project directory with a `project.yaml`, `--project` can be omitted.
 |------|-------------|
 | `--name NAME` | Speaker name |
 | `--audio FILE ...` | One or more reference audio files |
-| `--out-dir DIR` | Enrollment output directory (default: `./enrollments`) |
+| `--out-dir DIR` | Enrollment output directory (default: `./admin/enrollments`; see Voice folders) |
 | `--replace` | Overwrite an existing enrollment (default: append the new clips) |
 
 ### `debriefr sync-issues`
