@@ -54,3 +54,6 @@ env/
 /admin/enrollments/
 /admin/audio_samples/
 /admin/manager
+
+# Local devcycle block (paths on this Mac)
+project.yaml
