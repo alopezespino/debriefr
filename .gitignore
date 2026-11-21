@@ -49,11 +49,9 @@ env/
 # briefr: private records (link to ~/Documents/project-management)
 .monitor/
 
-# admin/ layout (2026-11-11): debriefr voice folders and the briefr records
-# link, local only
-/admin/enrollments/
-/admin/audio_samples/
-/admin/manager
+# admin/ is local only (layout v2, R4, 2026-11-21): the briefr records link
+# admin/manager, debriefr voice folders, email, drafts
+/admin/
 
 # Local devcycle block (paths on this Mac)
 project.yaml
