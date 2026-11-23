@@ -49,9 +49,11 @@ env/
 # briefr: private records (link to ~/Documents/project-management)
 .monitor/
 
-# admin/ is local only (layout v2, R4, 2026-11-21): the briefr records link
-# admin/manager, debriefr voice folders, email, drafts
+# admin/, temp/ and work/ are local only (layout v2): the briefr records link
+# admin/manager, voice folders, email, drafts, scratch and intermediate files
 /admin/
+/temp/
+/work/
 
 # Local devcycle block (paths on this Mac)
 project.yaml

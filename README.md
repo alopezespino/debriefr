@@ -473,6 +473,16 @@ The `auto` backend picks Groq > MLX > faster-whisper > OpenAI, whichever is avai
 
 Using `--summary-model claude-sonnet-4-6` drops summarization to ~$0.08. The summary prompt is cached (`cache_control: ephemeral`).
 
+## Repository layout
+
+- `debriefr/`: the Python package (CLI, pipeline, speaker enrollment, issue sync).
+- `tests/`: the pytest suite.
+- `templates/`: the `/debrief` skill, the summary template and an example project registry.
+- `examples/`: example inputs and outputs (see its README).
+- `debriefr.egg-info/`: build metadata created by `pip install -e .`; not tracked.
+- `admin/`: local working files of the maintainer (voice folders, drafts, notes); not tracked.
+- `temp/` and `work/`: local scratch and intermediate files; not tracked.
+
 ## Scope
 
 This is a personal tool I use daily; I'm sharing it in case it helps others. Contributions welcome but not solicited.
